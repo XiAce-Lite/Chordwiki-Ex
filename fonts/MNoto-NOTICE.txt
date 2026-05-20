@@ -1,0 +1,10 @@
+MNoto Sans (alpha) — ExtraBold v2
+Copyright (c) ykwe. See https://github.com/ykwe/MNoto-Sans-alpha
+
+Based on Noto Sans (Google Fonts). See the MNoto repository for details.
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+The full license text is in OFL.txt in this directory.
+https://openfontlicense.org/open-font-license-official-text
+
+Bundled with the Chordwiki-Ex Chrome extension for chord chart display on ChordWiki.

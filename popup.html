@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Chordwiki-Ex</title>
+  <style>
+    html {
+      margin: 0;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    *, *::before, *::after { box-sizing: inherit; }
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 12px 18px 14px;
+      min-width: 460px;
+      max-width: 520px;
+      overflow: hidden;
+    }
+    .toggle-input { display: none; }
+    .toggle-slider {
+      width: 36px;
+      height: 20px;
+      background: #ccc;
+      border-radius: 20px;
+      position: relative;
+      transition: background 0.2s;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      left: 2px;
+      top: 2px;
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle-input:checked + .toggle-slider { background: #4caf50; }
+    .toggle-input:checked + .toggle-slider::before { transform: translateX(16px); }
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      margin: 6px 0;
+      font-size: 14px;
+    }
+    .section-title {
+      font-weight: bold;
+      margin-top: 10px;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+    .setting-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 5px 0;
+      font-size: 13px;
+    }
+    .setting-row > label.setting-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+      cursor: pointer;
+    }
+    .setting-row .row-text {
+      white-space: nowrap;
+    }
+    .setting-row input[type="number"] {
+      width: 68px;
+      flex-shrink: 0;
+      text-align: right;
+    }
+    .setting-row input[type="color"] {
+      width: 36px;
+      height: 26px;
+      padding: 0;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .setting-row .color-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .setting-row .color-group span {
+      font-size: 12px;
+      color: #555;
+    }
+    .subgroup { margin-left: 0; }
+    .disabled-label { color: #aaa !important; }
+    .disabled-label .toggle-slider { opacity: 0.6; }
+  </style>
+</head>
+<body>
+  <label class="toggle-label" id="label-master">
+    <input type="checkbox" id="toggle-switch" class="toggle-input">
+    <span class="toggle-slider"></span>
+    <span>拡張機能を有効化</span>
+  </label>
+
+  <div class="subgroup">
+    <label class="toggle-label" id="label-adjust-chordpos-main">
+      <input type="checkbox" id="adjust-chordpos-switch" class="toggle-input">
+      <span class="toggle-slider"></span>
+      <span>長いコード時の歌詞位置調整</span>
+    </label>
+    <label class="toggle-label" id="label-mnoto-main">
+      <input type="checkbox" id="mnoto-switch" class="toggle-input">
+      <span class="toggle-slider"></span>
+      <span>MNoto Sansフォント対応</span>
+    </label>
+    <label class="toggle-label" id="label-move-overflow-main">
+      <input type="checkbox" id="move-overflow-switch" class="toggle-input">
+      <span class="toggle-slider"></span>
+      <span>行頭はみ出し歌詞を前行へ移動</span>
+    </label>
+    <label class="toggle-label" id="label-move-bar-main">
+      <input type="checkbox" id="move-bar-switch" class="toggle-input">
+      <span class="toggle-slider"></span>
+      <span>コード行の|を歌詞行へ移動</span>
+    </label>
+  </div>
+
+  <div class="section-title" id="label-layout-main">行レイアウト（rem）</div>
+
+  <div class="setting-row" id="row-chord-valign">
+    <label class="setting-label" id="label-chord-valign-main">
+      <input type="checkbox" id="chord-valign-switch" class="toggle-input">
+      <span class="toggle-slider"></span>
+      <span class="row-text">コードの歌詞に対する縦位置</span>
+    </label>
+    <input type="number" id="chord-valign-rem" step="0.05" min="-3" max="0" value="-1.06" title="rem">
+  </div>
+
+  <div class="setting-row" id="row-line-spacing">
+    <label class="setting-label" id="label-line-spacing-main">
+      <input type="checkbox" id="line-spacing-switch" class="toggle-input">
+      <span class="toggle-slider"></span>
+      <span class="row-text">譜面行の上余白</span>
+    </label>
+    <input type="number" id="line-padding-top-rem" step="0.05" min="0" max="3" value="0.8" title="rem">
+  </div>
+
+  <div class="setting-row" id="row-comment-layout">
+    <label class="setting-label" id="label-comment-layout-main">
+      <input type="checkbox" id="comment-layout-switch" class="toggle-input">
+      <span class="toggle-slider"></span>
+      <span class="row-text">コメント行の上余白</span>
+    </label>
+    <input type="number" id="comment-padding-top-rem" step="0.05" min="0" max="3" value="0.5" title="rem">
+  </div>
+
+  <div class="setting-row" id="row-blank-line">
+    <label class="setting-label" id="label-blank-line-main">
+      <input type="checkbox" id="blank-line-switch" class="toggle-input">
+      <span class="toggle-slider"></span>
+      <span class="row-text">空行の高さ</span>
+    </label>
+    <input type="number" id="blank-line-height-rem" step="0.05" min="0.1" max="3" value="0.5" title="rem">
+  </div>
+
+  <div class="section-title" id="label-chord-color-main">コードの色</div>
+  <div class="setting-row" id="row-chord-color">
+    <label class="setting-label" id="label-chord-color-toggle">
+      <input type="checkbox" id="chord-color-switch" class="toggle-input">
+      <span class="toggle-slider"></span>
+      <span class="row-text">コードの前景色</span>
+    </label>
+    <input type="color" id="chord-color" value="#3273cd">
+  </div>
+
+  <div class="section-title" id="label-comment-style-main">コメント行の見た目</div>
+  <div class="setting-row" id="row-comment-style">
+    <label class="setting-label" id="label-comment-style-toggle">
+      <input type="checkbox" id="comment-style-switch" class="toggle-input">
+      <span class="toggle-slider"></span>
+      <span class="row-text">コメント（strong）</span>
+    </label>
+    <div class="color-group" id="label-comment-fg">
+      <span>前景</span>
+      <input type="color" id="comment-strong-color" value="#4a4a4a">
+    </div>
+    <div class="color-group" id="label-comment-bg">
+      <span>背景</span>
+      <input type="color" id="comment-strong-bg" value="#e6e6e6">
+    </div>
+    <input type="number" id="comment-strong-font-rem" step="0.05" min="0.5" max="2" value="0.94" title="rem">
+  </div>
+
+  <div class="section-title" id="label-key-style-main">キー行（p.key）の見た目</div>
+  <div class="setting-row" id="row-key-style">
+    <label class="setting-label" id="label-key-style-toggle">
+      <input type="checkbox" id="key-style-switch" class="toggle-input">
+      <span class="toggle-slider"></span>
+      <span class="row-text">キー行</span>
+    </label>
+    <div class="color-group" id="label-key-fg">
+      <span>前景</span>
+      <input type="color" id="key-color" value="#ff0000">
+    </div>
+    <div class="color-group" id="label-key-bg">
+      <span>背景</span>
+      <input type="color" id="key-bg-color" value="#e6e6e6">
+    </div>
+    <input type="number" id="key-font-rem" step="0.05" min="0.5" max="2" value="1" title="rem">
+  </div>
+
+  <div class="section-title" id="label-font-size-main">コード行内記号（px）</div>
+  <div class="setting-row" id="row-small-font-size">
+    <span class="row-text" id="label-font-size" style="flex:1;padding-left:46px;">記号フォントサイズ</span>
+    <input type="number" id="small-font-size" min="6" max="18" value="14">
+  </div>
+  <div class="setting-row" id="row-small-font-valign">
+    <span class="row-text" id="label-font-valign" style="flex:1;padding-left:46px;">記号の縦位置</span>
+    <input type="number" id="small-font-valign" min="-3" max="10" value="7">
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
