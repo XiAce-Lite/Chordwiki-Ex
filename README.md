@@ -2,7 +2,7 @@
 
 ## なにするもの？
 
-ChordWikiの書き方が気に入らんコード譜に対して、DOMの書き換えとCSSで表示を整えるChrome拡張です。Chrome拡張としては公開する気がないです。
+ChordWikiの書き方が気に入らんコード譜に対して、DOMの書き換えとCSSで表示を整えるChrome拡張です。
 
 ### DOM 処理
 
@@ -47,11 +47,48 @@ Stylebot で行っていた広告非表示・譜面まわりの基本スタイ�
   </tr>
 </table>
 
+## manifest.json（ローカルのみ）
+
+リポジトリには **`manifest.example.json`** を置き、実際の **`manifest.json` は Git に含めません**（`.gitignore`）。公開したくない **Chrome 拡張の `key` などは `manifest.json` にだけ書いてください**。
+
+### 初回セットアップ（クローン後）
+
+1. `manifest.example.json` を `manifest.json` にコピーする。
+2. 必要なら `manifest.json` に `key` を追加する（初回ストア審査後）。
+3. バージョン自動 bump を使う場合: `git config core.hooksPath .githooks`（リポジトリごとに一度）
+
+### `manifest.example.json` を更新したいとき（Key 以外を Push したい）
+
+ローカルで編集した **`manifest.json` を正とし**、`key` フィールドだけを除いた内容でテンプレを上書きします。
+
+```bash
+node scripts/sync-manifest-example.js
+```
+
+その後、`manifest.example.json` をコミットしてください。コード変更の pre-commit でも同様に `manifest.example.json` が更新されます。
+
+バージョン番号の**唯一のソースは `manifest.json` の `version`**です。
+
+## バージョン番号（ストア公開）
+
+- Chrome ウェブストアの公開版は **patch 番号だけ上げる**運用を推奨します（例: `1.0.0` → `1.0.1`）。
+- 手動 bump: `.\bump-version.ps1` または `node scripts/version-sync.js bump`
+- コード（`.js` / `.html` / `.css` / `.json`）をコミットすると、pre-commit で patch が自動 increment され `manifest.example.json` がステージされます。
+
+## Chrome ウェブストア提出用 ZIP
+
+```powershell
+.\package-extension.ps1
+```
+
+`dist\Chordwiki-Ex-<version>.zip` が作成されます。ローカルの **`manifest.json`（本物）** が ZIP に入ります。
+
 ## 使い方
 
 1. リポジトリをクローンまたは ZIP を展開する
-2. Chrome の「パッケージ化されていない拡張機能を読み込む」でこのフォルダを指定する
-3. ChordWiki の曲ページを開き、ツールバーの Chordwiki-Ex アイコンから設定する
+2. 上記のとおり `manifest.json` を用意する
+3. Chrome の「パッケージ化されていない拡張機能を読み込む」でこのフォルダを指定する
+4. ChordWiki の曲ページを開き、ツールバーの Chordwiki-Ex アイコンから設定する
 
 長いコード時の歌詞位置調整・MNoto 対応の切り替え時は、DOM 加工の都合で**タブのリロード**が必要です。
 

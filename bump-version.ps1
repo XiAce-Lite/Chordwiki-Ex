@@ -1,21 +1,14 @@
-$manifestPath = "manifest.json"
-$manifest = Get-Content $manifestPath | ConvertFrom-Json
+# manifest.json の patch を +1 し、manifest.example.json を同期する（AutoScroller と同じ）。
+# 手動実行: .\bump-version.ps1
+# 通常は pre-commit フックが同じ処理を行う。
 
-$versionParts = $manifest.version -split '\.'
-$major = [int]$versionParts[0]
-$minor = [int]$versionParts[1]
-$patch = [int]$versionParts[2]
-
-$patch++
-if ($patch -gt 99) {
-    $patch = 0
-    $minor++
-    if ($minor -gt 99) {
-        $minor = 0
-        $major++
-    }
+$ErrorActionPreference = "Stop"
+$root = $PSScriptRoot
+if (-not $root) { $root = Get-Location }
+Push-Location $root
+try {
+    node scripts/version-sync.js bump
 }
-
-$manifest.version = "$major.$minor.$patch"
-$manifest | ConvertTo-Json -Depth 10 | Set-Content $manifestPath -Encoding UTF8
-Write-Host "manifest.json version bumped to $($manifest.version)"
+finally {
+    Pop-Location
+}

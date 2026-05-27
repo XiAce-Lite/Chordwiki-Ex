@@ -1,6 +1,6 @@
 {
   "name": "Chordwiki-Ex",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "manifest_version": 3,
   "description": "日本語 ChordWiki（ja.chordwiki.org）のコード譜を、DOM 加工と CSS で読みやすく整える Chrome 拡張。",
   "icons": {
@@ -12,34 +12,28 @@
   "permissions": [
     "storage"
   ],
-
   "content_scripts": [
     {
       "matches": [
         "https://ja.chordwiki.org/wiki/*",
         "https://ja.chordwiki.org/wiki.cgi?c=view&*"
       ],
-
       "js": [
         "layout-styles.js",
         "content.js"
       ]
     }
   ],
-
   "web_accessible_resources": [
     {
       "resources": [
         "fonts/MNotoSans-alpha-ExtraBold-v2.ttf"
       ],
-
       "matches": [
         "https://ja.chordwiki.org/*"
       ]
     }
-
   ],
-
   "action": {
     "default_icon": {
       "16": "icons/icon16.png",
