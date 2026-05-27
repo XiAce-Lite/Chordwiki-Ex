@@ -3,6 +3,12 @@
   "version": "1.0.0",
   "manifest_version": 3,
   "description": "日本語 ChordWiki（ja.chordwiki.org）のコード譜を、DOM 加工と CSS で読みやすく整える Chrome 拡張。",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": [
     "storage"
   ],
@@ -35,6 +41,10 @@
   ],
 
   "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    },
     "default_popup": "popup.html",
     "default_title": "Chordwiki-Ex"
   }
