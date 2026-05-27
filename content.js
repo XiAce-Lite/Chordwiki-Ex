@@ -437,10 +437,24 @@ function isOverflowLyricsText(cleanedText) {
   );
 }
 
-function findPreviousParagraphLastWord(p) {
-  const firstSpan = Array.from(p.children).find((c) => c.tagName === 'SPAN');
-  if (!firstSpan) return null;
-  return findImmediatePreviousLineLastWord(firstSpan);
+// 直前行を探す際に、コメント行/Key 行を跨がない版
+function findPreviousLineLastWordWithoutCrossingBoundary(p) {
+  let prev = p.previousElementSibling;
+  while (prev) {
+    if (prev.tagName === 'BR') {
+      prev = prev.previousElementSibling;
+      continue;
+    }
+    if (prev.matches && (prev.matches('p.line.comment') || prev.matches('p.key'))) {
+      return null;
+    }
+    if (prev.matches && prev.matches('p.line')) {
+      const words = prev.querySelectorAll('span.word, span.wordtop');
+      return words.length > 0 ? words[words.length - 1] : null;
+    }
+    prev = prev.previousElementSibling;
+  }
+  return null;
 }
 
 function appendOverflowToPreviousLine(prevWord, cleanedText) {
@@ -453,7 +467,13 @@ function appendOverflowToPreviousLine(prevWord, cleanedText) {
     addText = ' ' + overflowText + ' |';
     lastElem.textContent = lastElem.textContent.replace(/\|\s*$/, '');
   }
-  parentP.appendChild(document.createTextNode(addText));
+  // テキストノードで追加すると後段の trailing overflow 回収で再移動しやすいため、
+  // 歌詞 span として固定して連鎖移動を防ぐ。
+  const moved = document.createElement('span');
+  moved.className = 'word';
+  moved.setAttribute('data-rc-overflow-moved', '1');
+  moved.textContent = addText;
+  parentP.appendChild(moved);
   return true;
 }
 
@@ -619,7 +639,7 @@ function processParagraphTrailingOverflow(p) {
       break;
     }
     if (!isOverflowLyricsText(cleaned)) break;
-    const prevWord = findPreviousParagraphLastWord(p);
+    const prevWord = findPreviousLineLastWordWithoutCrossingBoundary(p);
     if (prevWord && appendOverflowToPreviousLine(prevWord, cleaned)) {
       node.remove();
       ensureLineStartBarWordtop(p);
