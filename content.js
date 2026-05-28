@@ -428,7 +428,29 @@ function getLineStartLyricsSpan(p) {
   return null;
 }
 
+// 歌詞なしの拍子記号（---- ----|、≧==、>--- など）。ChordPro / ChordWiki のコード行専用表記。
+// -, =, >, ≧, ≫, ＞, !, ○ は README の拍子・アクセント記号と specialSymbols に合わせる。
+const RHYTHM_MARKER_ONLY_RE = /^[\-\s=≧≫＞>!○]+$/;
+
+function isRhythmMarkerText(text) {
+  const t = cleanText(text);
+  if (!t) return false;
+  const core = t.replace(/\|+\s*$/, '').trim();
+  if (!core) return true;
+  return RHYTHM_MARKER_ONLY_RE.test(core);
+}
+
+function isRhythmNotationLine(p) {
+  const lyrics = p.querySelectorAll('span.word, span.wordtop');
+  if (lyrics.length === 0) return false;
+  for (const span of lyrics) {
+    if (!isRhythmMarkerText(span.textContent)) return false;
+  }
+  return true;
+}
+
 function isOverflowLyricsText(cleanedText) {
+  if (isRhythmMarkerText(cleanedText)) return false;
   return (
     cleanedText.length > 1 &&
     cleanedText.endsWith('|') &&
@@ -558,6 +580,7 @@ function findFirstBarElement(p) {
 
 // 行頭に小節線より前のはみ出し歌詞（例: Take it）がある場合、前行へ移す
 function processLineStartStrayLyrics(p) {
+  if (isRhythmNotationLine(p)) return;
   if (isSectionBoundaryBeforeLine(p)) return;
 
   const start = getLineStartLyricsSpan(p);
@@ -593,6 +616,8 @@ function isLineStartBeforeBar(lyricsSpan) {
 }
 
 function moveOverflowFromLyricsSpan(lyricsSpan) {
+  const line = lyricsSpan.closest('p.line');
+  if (line && isRhythmNotationLine(line)) return;
   const cleanedText = cleanText(lyricsSpan.textContent);
   if (cleanedText === '|') {
     lyricsSpan.textContent = '| ';
@@ -600,7 +625,6 @@ function moveOverflowFromLyricsSpan(lyricsSpan) {
   }
   if (!isOverflowLyricsText(cleanedText)) return;
   if (!isLineStartBeforeBar(lyricsSpan)) return;
-  const line = lyricsSpan.closest('p.line');
   if (line && isSectionBoundaryBeforeLine(line)) return;
   const prevWord = findImmediatePreviousLineLastWord(lyricsSpan);
   if (!prevWord || !appendOverflowToPreviousLine(prevWord, cleanedText)) return;
@@ -612,6 +636,8 @@ function collectOverflowLyricsTargets() {
   const targets = [];
   const add = (span) => {
     if (!isLyricsSpan(span) || seen.has(span)) return;
+    const line = span.closest('p.line');
+    if (line && isRhythmNotationLine(line)) return;
     seen.add(span);
     targets.push(span);
   };
@@ -624,6 +650,7 @@ function collectOverflowLyricsTargets() {
 
 // 行末テキストノード（例: " Take it  |"）を前行へ移動
 function processParagraphTrailingOverflow(p) {
+  if (isRhythmNotationLine(p)) return;
   const nodes = Array.from(p.childNodes);
   for (let i = nodes.length - 1; i >= 0; i--) {
     const node = nodes[i];
