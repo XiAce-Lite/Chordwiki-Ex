@@ -216,56 +216,6 @@ function removeEmptyWordtopSpans() {
   });
 }
 
-// 直前にセクション区切り（コメント行・Key 行など）があるか
-function isSectionBoundaryBeforeLine(p) {
-  let prev = p.previousElementSibling;
-  while (prev) {
-    if (prev.tagName === 'BR') {
-      prev = prev.previousElementSibling;
-      continue;
-    }
-    if (prev.matches && prev.matches(SECTION_BOUNDARY_SELECTOR)) return true;
-    if (prev.matches && prev.matches(LINE_SELECTOR)) return false;
-    prev = prev.previousElementSibling;
-  }
-  return false;
-}
-
-function getLyricsSpans(root) {
-  return root.querySelectorAll(LYRICS_SPAN_SELECTOR);
-}
-
-function getLastLyricsSpan(root) {
-  const spans = getLyricsSpans(root);
-  return spans.length > 0 ? spans[spans.length - 1] : null;
-}
-
-function findPreviousLineLastWord(line, options = {}) {
-  const { stopAtBoundary = false } = options;
-  let prev = line.previousElementSibling;
-  while (prev) {
-    if (prev.tagName === 'BR') {
-      prev = prev.previousElementSibling;
-      continue;
-    }
-    if (stopAtBoundary && prev.matches && prev.matches(SECTION_BOUNDARY_SELECTOR)) {
-      return null;
-    }
-    if (prev.matches && prev.matches(LINE_SELECTOR)) {
-      return getLastLyricsSpan(prev);
-    }
-    prev = prev.previousElementSibling;
-  }
-  return null;
-}
-
-// 直前の歌詞行（p.line、comment 除く）の最後の .word / .wordtop（同一行内は見ない）
-function findImmediatePreviousLineLastWord(span) {
-  const p = span.closest('p.line');
-  if (!p) return null;
-  return findPreviousLineLastWord(p);
-}
-
 function filterChordSpans(root) {
   return Array.from((root || document).querySelectorAll('span.chord')).filter(span =>
     !span.querySelector('.male, .male2, .female, .female2')
@@ -275,7 +225,6 @@ function filterChordSpans(root) {
 const RC_BAR_AS_LYRIC_CLASS = 'rc-bar-as-lyric';
 const LINE_SELECTOR = 'p.line';
 const LYRICS_SPAN_SELECTOR = 'span.word, span.wordtop';
-const SECTION_BOUNDARY_SELECTOR = 'p.line.comment, p.key';
 
 const BRACKET_BAR_ONLY_RE = /^\[\|\s*\]$/;
 const BRACKET_BAR_CODE_RE = /^\[\|\s*([^\]]*)\]$/;
@@ -452,33 +401,6 @@ function getLineStartLyricsSpan(p) {
   return null;
 }
 
-// はみ出し処理は「歌詞文字がある行」のみに適用する。
-// 記号・コードのみ（----, |, N.C, C/D など）の行は対象外にする。
-function hasLyricsTextLine(p) {
-  const lyrics = getLyricsSpans(p);
-  if (lyrics.length === 0) return false;
-
-  const joined = Array.from(lyrics)
-    .map((span) => cleanText(span.textContent))
-    .join(' ')
-    .normalize('NFKC');
-
-  // 日本語（ひらがな/カタカナ/漢字）または英字が1文字でもあれば歌詞行とみなす。
-  return /[A-Za-z\u3040-\u30FF\u4E00-\u9FFF]/.test(joined);
-}
-
-// 同一処理サイクル内で行判定を使い回す。
-function createLyricsLineChecker() {
-  const cache = new WeakMap();
-  return (p) => {
-    if (!p || !p.matches || !p.matches('p.line')) return false;
-    if (cache.has(p)) return cache.get(p);
-    const value = hasLyricsTextLine(p);
-    cache.set(p, value);
-    return value;
-  };
-}
-
 function isOverflowLyricsText(cleanedText) {
   return (
     cleanedText.length > 1 &&
@@ -488,55 +410,73 @@ function isOverflowLyricsText(cleanedText) {
   );
 }
 
-// 直前行を探す際に、コメント行/Key 行を跨がない版
-function findPreviousLineLastWordWithoutCrossingBoundary(p) {
-  return findPreviousLineLastWord(p, { stopAtBoundary: true });
+// 同一行の直前歌詞 → なければ前の p.line の最後の歌詞（comment / key / br は乗り越える）
+function findPreviousWordElement(wordtop) {
+  let prev = wordtop.previousElementSibling;
+  while (prev) {
+    if (
+      prev.classList &&
+      (prev.classList.contains('word') || prev.classList.contains('wordtop')) &&
+      !prev.querySelector('.male, .male2, .female, .female2')
+    ) {
+      return prev;
+    }
+    prev = prev.previousElementSibling;
+  }
+
+  let parent = wordtop.parentElement;
+  while (parent && !parent.matches(LINE_SELECTOR)) {
+    parent = parent.parentElement;
+  }
+  if (!parent) return null;
+
+  let prevP = parent.previousElementSibling;
+  while (prevP && (!prevP.matches(LINE_SELECTOR) || prevP.matches('p.comment'))) {
+    prevP = prevP.previousElementSibling;
+  }
+  if (!prevP) return null;
+
+  const words = prevP.querySelectorAll(LYRICS_SPAN_SELECTOR);
+  return words.length > 0 ? words[words.length - 1] : null;
 }
 
-function appendOverflowToPreviousLine(prevWord, cleanedText) {
-  const parentP = prevWord.closest('p');
-  if (!parentP) return false;
-  const overflowText = cleanedText.replace(/\|+\s*$/, '');
-  let addText = ' ' + overflowText + ' | ';
-  const lastElem = parentP.lastElementChild;
-  if (lastElem && lastElem.textContent && /\|\s*$/.test(lastElem.textContent)) {
-    addText = ' ' + overflowText + ' |';
-    lastElem.textContent = lastElem.textContent.replace(/\|\s*$/, '');
-  }
-  // テキストノードで追加すると後段の trailing overflow 回収で再移動しやすいため、
-  // 歌詞 span として固定して連鎖移動を防ぐ。
-  const moved = document.createElement('span');
-  moved.className = 'word';
-  moved.setAttribute('data-rc-overflow-moved', '1');
-  moved.textContent = addText;
-  parentP.appendChild(moved);
-  return true;
-}
+// 行頭 wordtop のはみ出し歌詞を前行へ移す（ReplaceChar コア）
+function moveOverflowWordtops() {
+  const wordtopElements = Array.from(document.querySelectorAll('span.wordtop')).filter(
+    (span) => !span.querySelector('.male, .male2, .female, .female2')
+  );
 
-function reduceLyricsSpanToBarWordtop(lyricsSpan) {
-  while (lyricsSpan.firstChild) lyricsSpan.removeChild(lyricsSpan.firstChild);
-  lyricsSpan.appendChild(document.createTextNode('| '));
-  if (lyricsSpan.classList.contains('word')) {
-    lyricsSpan.classList.add('wordtop');
-    lyricsSpan.classList.remove('word');
-  }
+  wordtopElements.forEach((wordtop) => {
+    const cleanedText = cleanText(wordtop.textContent);
+    if (cleanedText === '|') {
+      wordtop.textContent = '| ';
+      return;
+    }
+    if (!isOverflowLyricsText(cleanedText)) return;
+
+    const prevWord = findPreviousWordElement(wordtop);
+    if (!prevWord) return;
+
+    const parentP = prevWord.closest('p');
+    if (!parentP) return;
+
+    const overflowText = cleanedText.replace(/\|+\s*$/, '');
+    let addText = ' ' + overflowText + ' | ';
+    const lastElem = parentP.lastElementChild;
+    if (lastElem && lastElem.textContent && /\|\s*$/.test(lastElem.textContent)) {
+      addText = ' ' + overflowText + ' |';
+      lastElem.textContent = lastElem.textContent.replace(/\|\s*$/, '');
+    }
+    parentP.appendChild(document.createTextNode(addText));
+
+    while (wordtop.firstChild) wordtop.removeChild(wordtop.firstChild);
+    wordtop.appendChild(document.createTextNode('| '));
+  });
 }
 
 function isBarOnlyLyricsSpan(span) {
   if (!isLyricsSpan(span)) return false;
   return cleanText(span.textContent) === '|';
-}
-
-function lineHasLeadingBar(p) {
-  for (const child of p.children) {
-    if (child.tagName !== 'SPAN') continue;
-    if (isBarOnlyLyricsSpan(child)) return true;
-    if (child.classList.contains('chord') && parseBarChordParts(child.textContent.trim())) {
-      return true;
-    }
-    return false;
-  }
-  return false;
 }
 
 // 行頭の wordtop| + word| など連続小節線を 1 つの wordtop にまとめる
@@ -566,132 +506,10 @@ function consolidateLineStartBars(p) {
   }
 }
 
-function ensureLineStartBarWordtop(p) {
-  consolidateLineStartBars(p);
-  if (lineHasLeadingBar(p)) return;
-  const bar = document.createElement('span');
-  bar.className = 'wordtop';
-  bar.textContent = '| ';
-  p.insertBefore(bar, p.firstChild);
-}
-
-function findFirstBarElement(p) {
-  for (const child of p.children) {
-    if (child.tagName !== 'SPAN') continue;
-    if (child.classList.contains('wordtop') && cleanText(child.textContent).startsWith('|')) {
-      return child;
-    }
-    if (child.classList.contains('chord') && parseBarChordParts(child.textContent.trim())) {
-      return child;
-    }
-    if (child.classList.contains('word')) {
-      const t = cleanText(child.textContent);
-      if (t === '|' || t.startsWith('|')) return child;
-    }
-  }
-  return null;
-}
-
-// 行頭に小節線より前のはみ出し歌詞（例: Take it）がある場合、前行へ移す
-function processLineStartStrayLyrics(p, lineHasLyrics = hasLyricsTextLine) {
-  if (!lineHasLyrics(p)) return;
-  if (isSectionBoundaryBeforeLine(p)) return;
-
-  const start = getLineStartLyricsSpan(p);
-  const firstBar = findFirstBarElement(p);
-  if (!start || !firstBar) return;
-  const order = Array.from(p.children).filter((c) => c.tagName === 'SPAN');
-  if (order.indexOf(start) >= order.indexOf(firstBar)) return;
-
-  const cleaned = cleanText(start.textContent);
-  if (!cleaned || cleaned.startsWith('|')) return;
-
-  if (isOverflowLyricsText(cleaned)) {
-    moveOverflowFromLyricsSpan(start);
-    return;
-  }
-
-  const prevWord = findImmediatePreviousLineLastWord(start);
-  if (!prevWord) return;
-  const withBar = cleaned.endsWith('|') ? cleaned : `${cleaned} |`;
-  if (!appendOverflowToPreviousLine(prevWord, withBar)) return;
-  start.remove();
-}
-
-function isLineStartBeforeBar(lyricsSpan) {
-  const p = lyricsSpan.closest('p.line');
-  if (!p) return false;
-  const firstBar = findFirstBarElement(p);
-  if (!firstBar) return getLineStartLyricsSpan(p) === lyricsSpan;
-  const order = Array.from(p.children).filter((c) => c.tagName === 'SPAN');
-  const spanIdx = order.indexOf(lyricsSpan);
-  const barIdx = order.indexOf(firstBar);
-  return spanIdx >= 0 && barIdx >= 0 && spanIdx < barIdx;
-}
-
-function moveOverflowFromLyricsSpan(lyricsSpan, lineHasLyrics = hasLyricsTextLine) {
-  const line = lyricsSpan.closest('p.line');
-  if (line && !lineHasLyrics(line)) return;
-  const cleanedText = cleanText(lyricsSpan.textContent);
-  if (cleanedText === '|') {
-    lyricsSpan.textContent = '| ';
-    return;
-  }
-  if (!isOverflowLyricsText(cleanedText)) return;
-  if (!isLineStartBeforeBar(lyricsSpan)) return;
-  if (line && isSectionBoundaryBeforeLine(line)) return;
-  const prevWord = findImmediatePreviousLineLastWord(lyricsSpan);
-  if (!prevWord || !appendOverflowToPreviousLine(prevWord, cleanedText)) return;
-  reduceLyricsSpanToBarWordtop(lyricsSpan);
-}
-
-function collectOverflowLyricsTargets(lineHasLyrics = hasLyricsTextLine) {
-  const seen = new Set();
-  const targets = [];
-  const add = (span) => {
-    if (!isLyricsSpan(span) || seen.has(span)) return;
-    const line = span.closest('p.line');
-    if (line && !lineHasLyrics(line)) return;
-    seen.add(span);
-    targets.push(span);
-  };
-  document.querySelectorAll('span.wordtop').forEach(add);
-  document.querySelectorAll(LINE_SELECTOR).forEach((p) => {
-    add(getLineStartLyricsSpan(p));
-  });
-  return targets;
-}
-
-// 行末テキストノード（例: " Take it  |"）を前行へ移動
-function processParagraphTrailingOverflow(p, lineHasLyrics = hasLyricsTextLine) {
-  if (!lineHasLyrics(p)) return;
-  const nodes = Array.from(p.childNodes);
-  for (let i = nodes.length - 1; i >= 0; i--) {
-    const node = nodes[i];
-    if (node.nodeType !== Node.TEXT_NODE) break;
-    const cleaned = cleanText(node.textContent);
-    if (!cleaned) {
-      node.remove();
-      continue;
-    }
-    if (cleaned === '|') {
-      node.remove();
-      ensureLineStartBarWordtop(p);
-      break;
-    }
-    if (!isOverflowLyricsText(cleaned)) break;
-    const prevWord = findPreviousLineLastWordWithoutCrossingBoundary(p);
-    if (prevWord && appendOverflowToPreviousLine(prevWord, cleaned)) {
-      node.remove();
-      ensureLineStartBarWordtop(p);
-    }
-    break;
-  }
-}
-
 // chord spanの|処理
 function processChordBarsAndWordtops(options = {}) {
   const moveBarToLyrics = options.moveBarToLyrics === true;
+  const moveOverflowLyrics = options.moveOverflowLyrics === true;
 
   const chordSpans = filterChordSpans();
   chordSpans.forEach(span => {
@@ -734,6 +552,7 @@ function processChordBarsAndWordtops(options = {}) {
       if (text === '|') {
         const prev = element.previousElementSibling;
         if (prev && prev.classList.contains('wordtop')) {
+          prev.appendChild(document.createTextNode('| '));
           element.remove();
         } else {
           const newSpan = document.createElement('span');
@@ -748,27 +567,19 @@ function processChordBarsAndWordtops(options = {}) {
     splitPipeBarChordsOnChordLine();
     removeAllRedundantBarChords();
   }
+
+  if (moveOverflowLyrics) {
+    moveOverflowWordtops();
+  }
 }
 
 function replaceCharMain(adjustChordPos = true, mnotoEnabled = true, domOptions = {}) {
   const moveBarToLyrics = domOptions.moveBarToLyrics === true;
   const moveOverflowLyrics = domOptions.moveOverflowLyrics !== false;
-  const lineHasLyrics = createLyricsLineChecker();
 
   removeEmptyWordtopSpans();
-  if (moveOverflowLyrics) {
-    document.querySelectorAll(LINE_SELECTOR).forEach((p) => processLineStartStrayLyrics(p, lineHasLyrics));
-  }
-  processChordBarsAndWordtops({ moveBarToLyrics });
+  processChordBarsAndWordtops({ moveBarToLyrics, moveOverflowLyrics });
   if (mnotoEnabled) replaceMNotoSansText();
-  if (moveOverflowLyrics) {
-    collectOverflowLyricsTargets(lineHasLyrics).forEach((span) =>
-      moveOverflowFromLyricsSpan(span, lineHasLyrics)
-    );
-    document.querySelectorAll(LINE_SELECTOR).forEach((p) =>
-      processParagraphTrailingOverflow(p, lineHasLyrics)
-    );
-  }
   setFirstSpanToWordtop();
   document.querySelectorAll(LINE_SELECTOR).forEach(consolidateLineStartBars);
   replaceMajToM();
