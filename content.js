@@ -428,29 +428,34 @@ function getLineStartLyricsSpan(p) {
   return null;
 }
 
-// 歌詞なしの拍子記号（---- ----|、≧==、>--- など）。ChordPro / ChordWiki のコード行専用表記。
-// -, =, >, ≧, ≫, ＞, !, ○ は README の拍子・アクセント記号と specialSymbols に合わせる。
-const RHYTHM_MARKER_ONLY_RE = /^[\-\s=≧≫＞>!○]+$/;
-
-function isRhythmMarkerText(text) {
-  const t = cleanText(text);
-  if (!t) return false;
-  const core = t.replace(/\|+\s*$/, '').trim();
-  if (!core) return true;
-  return RHYTHM_MARKER_ONLY_RE.test(core);
-}
-
-function isRhythmNotationLine(p) {
+// はみ出し処理は「歌詞文字がある行」のみに適用する。
+// 記号・コードのみ（----, |, N.C, C/D など）の行は対象外にする。
+function hasLyricsTextLine(p) {
   const lyrics = p.querySelectorAll('span.word, span.wordtop');
   if (lyrics.length === 0) return false;
-  for (const span of lyrics) {
-    if (!isRhythmMarkerText(span.textContent)) return false;
-  }
-  return true;
+
+  const joined = Array.from(lyrics)
+    .map((span) => cleanText(span.textContent))
+    .join(' ')
+    .normalize('NFKC');
+
+  // 日本語（ひらがな/カタカナ/漢字）または英字が1文字でもあれば歌詞行とみなす。
+  return /[A-Za-z\u3040-\u30FF\u4E00-\u9FFF]/.test(joined);
+}
+
+// 同一処理サイクル内で行判定を使い回す。
+function createLyricsLineChecker() {
+  const cache = new WeakMap();
+  return (p) => {
+    if (!p || !p.matches || !p.matches('p.line')) return false;
+    if (cache.has(p)) return cache.get(p);
+    const value = hasLyricsTextLine(p);
+    cache.set(p, value);
+    return value;
+  };
 }
 
 function isOverflowLyricsText(cleanedText) {
-  if (isRhythmMarkerText(cleanedText)) return false;
   return (
     cleanedText.length > 1 &&
     cleanedText.endsWith('|') &&
@@ -579,8 +584,8 @@ function findFirstBarElement(p) {
 }
 
 // 行頭に小節線より前のはみ出し歌詞（例: Take it）がある場合、前行へ移す
-function processLineStartStrayLyrics(p) {
-  if (isRhythmNotationLine(p)) return;
+function processLineStartStrayLyrics(p, lineHasLyrics = hasLyricsTextLine) {
+  if (!lineHasLyrics(p)) return;
   if (isSectionBoundaryBeforeLine(p)) return;
 
   const start = getLineStartLyricsSpan(p);
@@ -615,9 +620,9 @@ function isLineStartBeforeBar(lyricsSpan) {
   return spanIdx >= 0 && barIdx >= 0 && spanIdx < barIdx;
 }
 
-function moveOverflowFromLyricsSpan(lyricsSpan) {
+function moveOverflowFromLyricsSpan(lyricsSpan, lineHasLyrics = hasLyricsTextLine) {
   const line = lyricsSpan.closest('p.line');
-  if (line && isRhythmNotationLine(line)) return;
+  if (line && !lineHasLyrics(line)) return;
   const cleanedText = cleanText(lyricsSpan.textContent);
   if (cleanedText === '|') {
     lyricsSpan.textContent = '| ';
@@ -631,13 +636,13 @@ function moveOverflowFromLyricsSpan(lyricsSpan) {
   reduceLyricsSpanToBarWordtop(lyricsSpan);
 }
 
-function collectOverflowLyricsTargets() {
+function collectOverflowLyricsTargets(lineHasLyrics = hasLyricsTextLine) {
   const seen = new Set();
   const targets = [];
   const add = (span) => {
     if (!isLyricsSpan(span) || seen.has(span)) return;
     const line = span.closest('p.line');
-    if (line && isRhythmNotationLine(line)) return;
+    if (line && !lineHasLyrics(line)) return;
     seen.add(span);
     targets.push(span);
   };
@@ -649,8 +654,8 @@ function collectOverflowLyricsTargets() {
 }
 
 // 行末テキストノード（例: " Take it  |"）を前行へ移動
-function processParagraphTrailingOverflow(p) {
-  if (isRhythmNotationLine(p)) return;
+function processParagraphTrailingOverflow(p, lineHasLyrics = hasLyricsTextLine) {
+  if (!lineHasLyrics(p)) return;
   const nodes = Array.from(p.childNodes);
   for (let i = nodes.length - 1; i >= 0; i--) {
     const node = nodes[i];
@@ -739,16 +744,21 @@ function processChordBarsAndWordtops(options = {}) {
 function replaceCharMain(adjustChordPos = true, mnotoEnabled = true, domOptions = {}) {
   const moveBarToLyrics = domOptions.moveBarToLyrics === true;
   const moveOverflowLyrics = domOptions.moveOverflowLyrics !== false;
+  const lineHasLyrics = createLyricsLineChecker();
 
   removeEmptyWordtopSpans();
   if (moveOverflowLyrics) {
-    document.querySelectorAll('p.line').forEach(processLineStartStrayLyrics);
+    document.querySelectorAll('p.line').forEach((p) => processLineStartStrayLyrics(p, lineHasLyrics));
   }
   processChordBarsAndWordtops({ moveBarToLyrics });
   if (mnotoEnabled) replaceMNotoSansText();
   if (moveOverflowLyrics) {
-    collectOverflowLyricsTargets().forEach(moveOverflowFromLyricsSpan);
-    document.querySelectorAll('p.line').forEach(processParagraphTrailingOverflow);
+    collectOverflowLyricsTargets(lineHasLyrics).forEach((span) =>
+      moveOverflowFromLyricsSpan(span, lineHasLyrics)
+    );
+    document.querySelectorAll('p.line').forEach((p) =>
+      processParagraphTrailingOverflow(p, lineHasLyrics)
+    );
   }
   setFirstSpanToWordtop();
   document.querySelectorAll('p.line').forEach(consolidateLineStartBars);
