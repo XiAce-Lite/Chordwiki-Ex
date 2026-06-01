@@ -186,7 +186,7 @@ function replaceMNotoSansText() {
 
 // <p class="line"> の最初の歌詞 span（word）を wordtop にする（chord は対象外）
 function setFirstSpanToWordtop() {
-  const lines = document.querySelectorAll('p.line');
+  const lines = document.querySelectorAll(LINE_SELECTOR);
   lines.forEach(p => {
     const firstLyrics = getLineStartLyricsSpan(p);
     if (!firstLyrics || firstLyrics.classList.contains('wordtop')) return;
@@ -224,25 +224,46 @@ function isSectionBoundaryBeforeLine(p) {
       prev = prev.previousElementSibling;
       continue;
     }
-    if (prev.matches && prev.matches('p.line.comment')) return true;
-    if (prev.matches && prev.matches('p.key')) return true;
-    if (prev.matches && prev.matches('p.line')) return false;
+    if (prev.matches && prev.matches(SECTION_BOUNDARY_SELECTOR)) return true;
+    if (prev.matches && prev.matches(LINE_SELECTOR)) return false;
     prev = prev.previousElementSibling;
   }
   return false;
+}
+
+function getLyricsSpans(root) {
+  return root.querySelectorAll(LYRICS_SPAN_SELECTOR);
+}
+
+function getLastLyricsSpan(root) {
+  const spans = getLyricsSpans(root);
+  return spans.length > 0 ? spans[spans.length - 1] : null;
+}
+
+function findPreviousLineLastWord(line, options = {}) {
+  const { stopAtBoundary = false } = options;
+  let prev = line.previousElementSibling;
+  while (prev) {
+    if (prev.tagName === 'BR') {
+      prev = prev.previousElementSibling;
+      continue;
+    }
+    if (stopAtBoundary && prev.matches && prev.matches(SECTION_BOUNDARY_SELECTOR)) {
+      return null;
+    }
+    if (prev.matches && prev.matches(LINE_SELECTOR)) {
+      return getLastLyricsSpan(prev);
+    }
+    prev = prev.previousElementSibling;
+  }
+  return null;
 }
 
 // 直前の歌詞行（p.line、comment 除く）の最後の .word / .wordtop（同一行内は見ない）
 function findImmediatePreviousLineLastWord(span) {
   const p = span.closest('p.line');
   if (!p) return null;
-  let prevP = p.previousElementSibling;
-  while (prevP && (!prevP.matches('p.line') || prevP.matches('p.comment'))) {
-    prevP = prevP.previousElementSibling;
-  }
-  if (!prevP) return null;
-  const words = prevP.querySelectorAll('span.word, span.wordtop');
-  return words.length > 0 ? words[words.length - 1] : null;
+  return findPreviousLineLastWord(p);
 }
 
 function filterChordSpans(root) {
@@ -252,6 +273,9 @@ function filterChordSpans(root) {
 }
 
 const RC_BAR_AS_LYRIC_CLASS = 'rc-bar-as-lyric';
+const LINE_SELECTOR = 'p.line';
+const LYRICS_SPAN_SELECTOR = 'span.word, span.wordtop';
+const SECTION_BOUNDARY_SELECTOR = 'p.line.comment, p.key';
 
 const BRACKET_BAR_ONLY_RE = /^\[\|\s*\]$/;
 const BRACKET_BAR_CODE_RE = /^\[\|\s*([^\]]*)\]$/;
@@ -431,7 +455,7 @@ function getLineStartLyricsSpan(p) {
 // はみ出し処理は「歌詞文字がある行」のみに適用する。
 // 記号・コードのみ（----, |, N.C, C/D など）の行は対象外にする。
 function hasLyricsTextLine(p) {
-  const lyrics = p.querySelectorAll('span.word, span.wordtop');
+  const lyrics = getLyricsSpans(p);
   if (lyrics.length === 0) return false;
 
   const joined = Array.from(lyrics)
@@ -466,22 +490,7 @@ function isOverflowLyricsText(cleanedText) {
 
 // 直前行を探す際に、コメント行/Key 行を跨がない版
 function findPreviousLineLastWordWithoutCrossingBoundary(p) {
-  let prev = p.previousElementSibling;
-  while (prev) {
-    if (prev.tagName === 'BR') {
-      prev = prev.previousElementSibling;
-      continue;
-    }
-    if (prev.matches && (prev.matches('p.line.comment') || prev.matches('p.key'))) {
-      return null;
-    }
-    if (prev.matches && prev.matches('p.line')) {
-      const words = prev.querySelectorAll('span.word, span.wordtop');
-      return words.length > 0 ? words[words.length - 1] : null;
-    }
-    prev = prev.previousElementSibling;
-  }
-  return null;
+  return findPreviousLineLastWord(p, { stopAtBoundary: true });
 }
 
 function appendOverflowToPreviousLine(prevWord, cleanedText) {
@@ -647,7 +656,7 @@ function collectOverflowLyricsTargets(lineHasLyrics = hasLyricsTextLine) {
     targets.push(span);
   };
   document.querySelectorAll('span.wordtop').forEach(add);
-  document.querySelectorAll('p.line').forEach((p) => {
+  document.querySelectorAll(LINE_SELECTOR).forEach((p) => {
     add(getLineStartLyricsSpan(p));
   });
   return targets;
@@ -720,7 +729,7 @@ function processChordBarsAndWordtops(options = {}) {
     });
 
     // 歌詞の行に移行された小節線のスペースを調整
-    document.querySelectorAll('span.word, span.wordtop').forEach(element => {
+    document.querySelectorAll(LYRICS_SPAN_SELECTOR).forEach(element => {
       const text = element.textContent.trim();
       if (text === '|') {
         const prev = element.previousElementSibling;
@@ -734,7 +743,7 @@ function processChordBarsAndWordtops(options = {}) {
         }
       }
     });
-    document.querySelectorAll('p.line').forEach(consolidateLineStartBars);
+    document.querySelectorAll(LINE_SELECTOR).forEach(consolidateLineStartBars);
   } else {
     splitPipeBarChordsOnChordLine();
     removeAllRedundantBarChords();
@@ -748,7 +757,7 @@ function replaceCharMain(adjustChordPos = true, mnotoEnabled = true, domOptions 
 
   removeEmptyWordtopSpans();
   if (moveOverflowLyrics) {
-    document.querySelectorAll('p.line').forEach((p) => processLineStartStrayLyrics(p, lineHasLyrics));
+    document.querySelectorAll(LINE_SELECTOR).forEach((p) => processLineStartStrayLyrics(p, lineHasLyrics));
   }
   processChordBarsAndWordtops({ moveBarToLyrics });
   if (mnotoEnabled) replaceMNotoSansText();
@@ -756,12 +765,12 @@ function replaceCharMain(adjustChordPos = true, mnotoEnabled = true, domOptions 
     collectOverflowLyricsTargets(lineHasLyrics).forEach((span) =>
       moveOverflowFromLyricsSpan(span, lineHasLyrics)
     );
-    document.querySelectorAll('p.line').forEach((p) =>
+    document.querySelectorAll(LINE_SELECTOR).forEach((p) =>
       processParagraphTrailingOverflow(p, lineHasLyrics)
     );
   }
   setFirstSpanToWordtop();
-  document.querySelectorAll('p.line').forEach(consolidateLineStartBars);
+  document.querySelectorAll(LINE_SELECTOR).forEach(consolidateLineStartBars);
   replaceMajToM();
   if (adjustChordPos) adjustWordLeftToChord();
   if (!moveBarToLyrics) markChordLineBarSpans();
