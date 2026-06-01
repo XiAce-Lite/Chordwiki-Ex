@@ -1,6 +1,11 @@
 // コードとして成立するもの（m7-5, m9-5, D#m7-5 なども許可）
 // 複数の括弧付きテンションにも対応
 const chordAllowed = /^[A-G](#|b)?((?:m|M|maj|min|sus[0-9]*|add[0-9]*|dim|aug)*[0-9]*(?:-[0-9]+)?)(?:\([^)]+\)|\{[^}]+\})*(?:\/[A-G](#|b)?(?:\([^)]+\)|\{[^}]+\})*)?$/i;
+// 長いコード時の歌詞位置調整（穏やか）
+const CHORD_POS_MIN_DIFF_PX = 28;
+const CHORD_POS_SHIFT_RATIO = 0.5;
+const CHORD_POS_MAX_SHIFT_PX = 12;
+const CHORD_POS_MIN_GAP_PX = 24;
 // 極小フォント設定のデフォルト
 let SMALL_FONT_SIZE = 14;
 let SMALL_FONT_VALIGN = 7;
@@ -21,46 +26,38 @@ function replaceMajToM() {
 function adjustWordLeftToChord() {
   const chordSpans = document.querySelectorAll('span.chord');
   chordSpans.forEach(chord => {
-    // 次の兄弟要素でspan.wordまたはspan.wordtopを探す
     let next = chord.nextElementSibling;
     while (next && !(next.classList && (next.classList.contains('word') || next.classList.contains('wordtop')))) {
       next = next.nextElementSibling;
-  }
-  if (!next) return;
-  // テキストが空、または > と - のみ（複合・連続含む）、または1文字のみなら対象外
-  const trimmed = next.textContent.trim();
-  if (trimmed === '' || /^([>\-]+)$/.test(trimmed) || trimmed.length === 1) return;
+    }
+    if (!next) return;
 
-  // span.chordのテキストがコード名の場合のみ調整
-  if (!chordAllowed.test(chord.textContent.trim())) return;
-    // 位置取得
+    const trimmed = next.textContent.trim();
+    if (trimmed === '' || /^([>\-]+)$/.test(trimmed) || trimmed.length === 1) return;
+    if (!chordAllowed.test(chord.textContent.trim())) return;
+
     const chordLeft = chord.getBoundingClientRect().left;
     const wordLeft = next.getBoundingClientRect().left;
     const diff = wordLeft - chordLeft;
-    // ずれが20px以上なら、diffの半分だけ近づける。ただし連続するchord間は1.5rem(24px)以上空ける
-    if (diff > 20) {
-      const minChordGap = 24; // 1.5rem=24px想定
-      let allowShift = true;
-      let nextChord = next.nextElementSibling;
-      while (nextChord && !(nextChord.classList && nextChord.classList.contains('chord'))) {
-        nextChord = nextChord.nextElementSibling;
-      }
-      if (nextChord) {
-        const nextChordLeft = nextChord.getBoundingClientRect().left;
-            const newWordLeft = wordLeft + (-diff * 0.75);
-        if (nextChordLeft - newWordLeft < minChordGap) {
-          allowShift = false;
-        }
-      }
-      if (allowShift) {
-            let shift = -diff * 0.75;
-        if (Math.abs(shift) > 20) {
-          shift = shift < 0 ? -16 : 16;
-        }
-        const currentMargin = parseFloat(window.getComputedStyle(next).marginLeft) || 0;
-        next.style.marginLeft = (currentMargin + shift) + 'px';
-      }
+    if (diff <= CHORD_POS_MIN_DIFF_PX) return;
+
+    let shift = -diff * CHORD_POS_SHIFT_RATIO;
+    if (Math.abs(shift) > CHORD_POS_MAX_SHIFT_PX) {
+      shift = shift < 0 ? -CHORD_POS_MAX_SHIFT_PX : CHORD_POS_MAX_SHIFT_PX;
     }
+
+    let nextChord = next.nextElementSibling;
+    while (nextChord && !(nextChord.classList && nextChord.classList.contains('chord'))) {
+      nextChord = nextChord.nextElementSibling;
+    }
+    if (nextChord) {
+      const nextChordLeft = nextChord.getBoundingClientRect().left;
+      const newWordLeft = wordLeft + shift;
+      if (nextChordLeft - newWordLeft < CHORD_POS_MIN_GAP_PX) return;
+    }
+
+    const currentMargin = parseFloat(window.getComputedStyle(next).marginLeft) || 0;
+    next.style.marginLeft = (currentMargin + shift) + 'px';
   });
 }
 
