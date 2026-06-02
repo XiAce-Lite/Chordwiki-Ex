@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const mnotoSwitch = document.getElementById('mnoto-switch');
   const moveOverflowSwitch = document.getElementById('move-overflow-switch');
   const moveBarSwitch = document.getElementById('move-bar-switch');
+  const inlineVideoSwitch = document.getElementById('inline-video-switch');
 
   const chordValignSwitch = document.getElementById('chord-valign-switch');
   const chordValignRem = document.getElementById('chord-valign-rem');
@@ -31,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const subControls = [
     adjustSwitch, mnotoSwitch,
-    moveOverflowSwitch, moveBarSwitch,
+    moveOverflowSwitch, moveBarSwitch, inlineVideoSwitch,
     chordValignSwitch, chordValignRem, lineSpacingSwitch, linePaddingTopRem,
     commentLayoutSwitch, commentPaddingTopRem, blankLineSwitch, blankLineHeightRem,
     chordColorSwitch, chordColor,
@@ -49,6 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const storageKeys = [
     'enabled', 'adjustChordPos', 'mnotoEnabled',
     'moveOverflowLyricsEnabled', 'moveBarToLyricsEnabled',
+    'inlineVideoEnabled',
     'chordValignEnabled', 'chordValignRem',
     'lineSpacingEnabled', 'linePaddingTopRem',
     'commentLayoutEnabled', 'commentPaddingTopRem',
@@ -65,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
     mnotoSwitch.checked = data.mnotoEnabled !== false;
     moveOverflowSwitch.checked = data.moveOverflowLyricsEnabled !== false;
     moveBarSwitch.checked = data.moveBarToLyricsEnabled !== false;
+    inlineVideoSwitch.checked = data.inlineVideoEnabled !== false;
     chordValignSwitch.checked = data.chordValignEnabled !== false;
     lineSpacingSwitch.checked = data.lineSpacingEnabled !== false;
     commentLayoutSwitch.checked = data.commentLayoutEnabled !== false;
@@ -109,6 +112,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   moveBarSwitch.addEventListener('change', () => {
     chrome.storage.sync.set({ moveBarToLyricsEnabled: moveBarSwitch.checked }, reloadActiveTab);
+  });
+
+  inlineVideoSwitch.addEventListener('change', () => {
+    chrome.storage.sync.set({ inlineVideoEnabled: inlineVideoSwitch.checked });
   });
 
   chordValignSwitch.addEventListener('change', () => {

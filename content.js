@@ -222,6 +222,17 @@ function filterChordSpans(root) {
 const RC_BAR_AS_LYRIC_CLASS = 'rc-bar-as-lyric';
 const LINE_SELECTOR = 'p.line';
 const LYRICS_SPAN_SELECTOR = 'span.word, span.wordtop';
+const INLINE_VIDEO_SHELL_ID = 'rc-inline-youtube-shell';
+const INLINE_VIDEO_IFRAME_ID = 'rc-inline-youtube-iframe';
+const INLINE_VIDEO_TITLE_ID = 'rc-inline-youtube-title';
+const INLINE_VIDEO_OPEN_ID = 'rc-inline-youtube-open';
+const INLINE_VIDEO_CLOSE_ID = 'rc-inline-youtube-close';
+
+const inlineVideoState = {
+  initialized: false,
+  clickHandler: null
+};
+const INLINE_VIDEO_STORAGE_KEY = 'inlineVideoEnabled';
 
 const BRACKET_BAR_ONLY_RE = /^\[\|\s*\]$/;
 const BRACKET_BAR_CODE_RE = /^\[\|\s*([^\]]*)\]$/;
@@ -263,6 +274,171 @@ function parseBarChordParts(text) {
 function isPipeBarCodeText(text) {
   const parts = parseBarChordParts(normalizeBarText(text));
   return !!(parts && !parts.barOnly && parts.inner);
+}
+
+function parseYouTubeStartSeconds(url) {
+  const raw = String(
+    url.searchParams.get('t') ||
+    url.searchParams.get('start') ||
+    ''
+  ).trim();
+  if (!raw) return 0;
+  if (/^\d+$/.test(raw)) return Math.max(0, Number(raw));
+  const m = raw.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/i);
+  if (!m) return 0;
+  const h = Number(m[1] || 0);
+  const min = Number(m[2] || 0);
+  const sec = Number(m[3] || 0);
+  return h * 3600 + min * 60 + sec;
+}
+
+function parseVideoInfo(urlText) {
+  try {
+    const url = new URL(urlText, location.href);
+    const host = url.hostname.toLowerCase();
+    let provider = '';
+    let videoId = '';
+    if (host === 'youtu.be') {
+      provider = 'youtube';
+      videoId = url.pathname.replace(/^\/+/, '').split('/')[0] || '';
+    } else if (host.endsWith('youtube.com') || host.endsWith('youtube-nocookie.com')) {
+      provider = 'youtube';
+      if (url.pathname === '/watch') {
+        videoId = String(url.searchParams.get('v') || '').trim();
+      } else if (url.pathname.startsWith('/embed/')) {
+        videoId = url.pathname.replace('/embed/', '').split('/')[0] || '';
+      } else if (url.pathname.startsWith('/shorts/')) {
+        videoId = url.pathname.replace('/shorts/', '').split('/')[0] || '';
+      }
+    } else if (host === 'nico.ms') {
+      provider = 'niconico';
+      videoId = url.pathname.replace(/^\/+/, '').split('/')[0] || '';
+    } else if (host.endsWith('nicovideo.jp') || host.endsWith('niconico.com')) {
+      if (url.pathname.startsWith('/watch/')) {
+        provider = 'niconico';
+        videoId = url.pathname.replace('/watch/', '').split('/')[0] || '';
+      }
+    } else {
+      return null;
+    }
+    if (provider === 'youtube') {
+      if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) return null;
+      return { provider, videoId, startSeconds: parseYouTubeStartSeconds(url) };
+    }
+    if (provider === 'niconico') {
+      if (!/^[A-Za-z]{2}\d+$/.test(videoId) && !/^\d+$/.test(videoId)) return null;
+      return { provider, videoId, startSeconds: 0 };
+    }
+    return null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function buildInlineVideoWatchUrl(provider, videoId, startSeconds) {
+  if (provider === 'niconico') {
+    return `https://www.nicovideo.jp/watch/${encodeURIComponent(videoId)}`;
+  }
+  const start = Math.max(0, Math.trunc(Number(startSeconds) || 0));
+  if (start > 0) {
+    return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&t=${start}s`;
+  }
+  return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+}
+
+function buildInlineVideoEmbedUrl(provider, videoId, startSeconds) {
+  if (provider === 'niconico') {
+    return `https://embed.nicovideo.jp/watch/${encodeURIComponent(videoId)}?autoplay=1`;
+  }
+  const start = Math.max(0, Math.trunc(Number(startSeconds) || 0));
+  const qs = new URLSearchParams({
+    autoplay: '1',
+    rel: '0',
+    playsinline: '1',
+    modestbranding: '1'
+  });
+  if (start > 0) qs.set('start', String(start));
+  return `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?${qs.toString()}`;
+}
+
+function ensureInlineYouTubePlayerDom() {
+  let shell = document.getElementById(INLINE_VIDEO_SHELL_ID);
+  if (shell) return shell;
+  shell = document.createElement('div');
+  shell.id = INLINE_VIDEO_SHELL_ID;
+  shell.className = 'rc-inline-youtube-shell';
+  shell.hidden = true;
+  shell.innerHTML = `
+    <div class="rc-inline-youtube-header">
+      <div id="${INLINE_VIDEO_TITLE_ID}" class="rc-inline-youtube-title">Now Playing</div>
+      <div class="rc-inline-youtube-actions">
+        <a id="${INLINE_VIDEO_OPEN_ID}" class="rc-inline-youtube-open" href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer">開く</a>
+        <button id="${INLINE_VIDEO_CLOSE_ID}" type="button" class="rc-inline-youtube-close" aria-label="Close video player">×</button>
+      </div>
+    </div>
+    <div class="rc-inline-youtube-frame">
+      <iframe id="${INLINE_VIDEO_IFRAME_ID}" title="Inline video player" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+    </div>
+  `;
+  (document.body || document.documentElement).appendChild(shell);
+  const closeBtn = document.getElementById(INLINE_VIDEO_CLOSE_ID);
+  closeBtn?.addEventListener('click', () => closeInlineYouTubePlayer());
+  return shell;
+}
+
+function openInlineYouTubePlayer(provider, videoId, startSeconds) {
+  const shell = ensureInlineYouTubePlayerDom();
+  const iframe = document.getElementById(INLINE_VIDEO_IFRAME_ID);
+  const title = document.getElementById(INLINE_VIDEO_TITLE_ID);
+  const openLink = document.getElementById(INLINE_VIDEO_OPEN_ID);
+  if (!iframe || !title || !openLink) return;
+  const start = Math.max(0, Math.trunc(Number(startSeconds) || 0));
+  const label = provider === 'niconico' ? 'ニコニコ動画' : 'YouTube';
+  title.textContent = provider === 'youtube' && start > 0 ? `${label} (${start}s)` : label;
+  openLink.href = buildInlineVideoWatchUrl(provider, videoId, start);
+  iframe.src = buildInlineVideoEmbedUrl(provider, videoId, start);
+  shell.hidden = false;
+}
+
+function closeInlineYouTubePlayer() {
+  const shell = document.getElementById(INLINE_VIDEO_SHELL_ID);
+  const iframe = document.getElementById(INLINE_VIDEO_IFRAME_ID);
+  if (iframe) iframe.src = 'about:blank';
+  if (shell) shell.hidden = true;
+}
+
+function initInlineYouTubePlayer() {
+  if (inlineVideoState.initialized) return;
+  ensureInlineYouTubePlayerDom();
+  inlineVideoState.clickHandler = (event) => {
+    const anchor = event.target?.closest?.('a[href]');
+    if (!anchor) return;
+    const info = parseVideoInfo(anchor.href);
+    if (!info) return;
+    event.preventDefault();
+    openInlineYouTubePlayer(info.provider, info.videoId, info.startSeconds);
+  };
+  document.addEventListener('click', inlineVideoState.clickHandler, true);
+  inlineVideoState.initialized = true;
+}
+
+function disableInlineVideoPlayback() {
+  if (inlineVideoState.clickHandler) {
+    document.removeEventListener('click', inlineVideoState.clickHandler, true);
+    inlineVideoState.clickHandler = null;
+    inlineVideoState.initialized = false;
+  }
+  closeInlineYouTubePlayer();
+}
+
+function syncInlineVideoPlaybackFromStorage() {
+  chrome.storage.sync.get([INLINE_VIDEO_STORAGE_KEY], (data) => {
+    if (data[INLINE_VIDEO_STORAGE_KEY] === false) {
+      disableInlineVideoPlayback();
+    } else {
+      initInlineYouTubePlayer();
+    }
+  });
 }
 
 function isChordLineBarOnly(span) {
@@ -619,6 +795,7 @@ function loadDomProcessingOptions(callback) {
 function onExtensionEnabled(adjustChordPos, mnotoEnabled) {
   window.RCLayout.loadLayoutSettings((layout) => {
     window.RCLayout.applyReplaceCharStyles({ ...layout, mnotoEnabled: mnotoEnabled !== false });
+    syncInlineVideoPlaybackFromStorage();
     loadDomProcessingOptions((domOptions) => {
       runReplaceCharDom(adjustChordPos, mnotoEnabled, domOptions);
     });
@@ -626,6 +803,7 @@ function onExtensionEnabled(adjustChordPos, mnotoEnabled) {
 }
 
 function onExtensionDisabled() {
+  disableInlineVideoPlayback();
   window.RCLayout.removeReplaceCharStyles();
   location.reload();
 }
@@ -666,6 +844,15 @@ if (chrome.storage && chrome.storage.onChanged) {
           runReplaceCharDom(adjustChordPos, mnotoEnabled, domOptions);
         });
       });
+      return;
+    }
+
+    if (changes[INLINE_VIDEO_STORAGE_KEY]) {
+      if (changes[INLINE_VIDEO_STORAGE_KEY].newValue === false) {
+        disableInlineVideoPlayback();
+      } else {
+        initInlineYouTubePlayer();
+      }
       return;
     }
 
