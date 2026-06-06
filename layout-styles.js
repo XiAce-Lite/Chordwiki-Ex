@@ -398,13 +398,47 @@ ${chordBarOnLineSelector()} {
     return LAYOUT_STORAGE_KEYS.some((k) => changes[k]);
   }
 
+  const LAYOUT_READY_EVENT = 'rc-chordwiki-ex-ready';
+  let layoutReady = false;
+  const layoutReadyWaiters = [];
+
+  function notifyReady() {
+    layoutReady = true;
+    document.dispatchEvent(new CustomEvent(LAYOUT_READY_EVENT, { detail: { version: 1 } }));
+    const waiters = layoutReadyWaiters.splice(0, layoutReadyWaiters.length);
+    waiters.forEach((fn) => {
+      try {
+        fn();
+      } catch (e) {
+        void e;
+      }
+    });
+  }
+
+  function whenReady(callback) {
+    if (typeof callback !== 'function') return;
+    if (layoutReady) {
+      callback();
+      return;
+    }
+    layoutReadyWaiters.push(callback);
+  }
+
+  function isLayoutReady() {
+    return layoutReady;
+  }
+
   window.RCLayout = {
     LAYOUT_DEFAULTS,
     LAYOUT_STORAGE_KEYS,
+    LAYOUT_READY_EVENT,
     applyReplaceCharStyles,
     removeReplaceCharStyles,
     loadLayoutSettings,
     isLayoutStorageChange,
-    normalizeLayoutSettings
+    normalizeLayoutSettings,
+    notifyReady,
+    whenReady,
+    isLayoutReady
   };
 })();

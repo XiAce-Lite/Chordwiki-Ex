@@ -783,6 +783,7 @@ function runReplaceCharDom(adjustChordPos, mnotoEnabled, domOptions) {
       mnotoEnabled !== false,
       domOptions || {}
     );
+    window.RCLayout?.notifyReady?.();
   });
 }
 
@@ -833,6 +834,7 @@ if (chrome.storage && chrome.storage.onChanged) {
       window.RCLayout.loadLayoutSettings((layout) => {
         chrome.storage.sync.get(['mnotoEnabled'], ({ mnotoEnabled }) => {
           window.RCLayout.applyReplaceCharStyles({ ...layout, mnotoEnabled: mnotoEnabled !== false });
+          window.RCLayout.notifyReady();
         });
       });
       return;
