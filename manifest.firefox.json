@@ -2,7 +2,7 @@
   "name": "Chordwiki-Ex",
   "version": "1.0.11",
   "manifest_version": 3,
-  "description": "日本語 ChordWiki（ja.chordwiki.org）のコード譜を、DOM 加工と CSS で読みやすく整える Chrome 拡張。",
+  "description": "日本語 ChordWiki（ja.chordwiki.org）のコード譜を、DOM 加工と CSS で読みやすく整えるブラウザ拡張。",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -41,5 +41,19 @@
     },
     "default_popup": "popup.html",
     "default_title": "Chordwiki-Ex"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "chordwiki-ex@xiace-lite",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
+    }
   }
 }

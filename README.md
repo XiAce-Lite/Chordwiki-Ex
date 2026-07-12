@@ -1,8 +1,8 @@
-# Chordwiki-Ex（Chrome拡張）
+# Chordwiki-Ex（Chrome / Firefox 拡張）
 
 ## なにするもの？
 
-ChordWikiの書き方が気に入らんコード譜に対して、DOMの書き換えとCSSで表示を整えるChrome拡張です。
+ChordWikiの書き方が気に入らんコード譜に対して、DOMの書き換えとCSSで表示を整えるブラウザ拡張です。
 
 ### DOM 処理
 
@@ -79,11 +79,31 @@ node scripts/sync-manifest-example.js
 
 ```powershell
 .\package-extension.ps1
+# または明示的に
+.\package-extension.ps1 -Target chrome
 ```
 
 `dist\Chordwiki-Ex-<version>.zip` が作成されます。ローカルの **`manifest.json`（本物）** が ZIP に入ります。
 
-## 使い方
+## Firefox（AMO）提出用 ZIP
+
+```powershell
+.\package-extension.ps1 -Target firefox
+```
+
+- Zip: `dist\Chordwiki-Ex-<version>-firefox.zip`
+- 一時読込用フォルダ: `dist\firefox-unpacked\`（`about:debugging` →「一時的なアドオンを読み込む」でこの中の `manifest.json` を選択）
+
+Firefox 用マニフェストは **`manifest.firefox.json`**（`browser_specific_settings.gecko.id` 付き）。バージョンは `manifest.json` と pre-commit / `version-sync` で同期されます。
+
+### Firefox での動作確認
+
+1. `.\package-extension.ps1 -Target firefox`
+2. Firefox で `about:debugging#/runtime/this-firefox`
+3. 「一時的なアドオンを読み込む」→ `dist\firefox-unpacked\manifest.json`
+4. ChordWiki の曲ページで確認
+
+## 使い方（Chrome）
 
 1. リポジトリをクローンまたは ZIP を展開する
 2. 上記のとおり `manifest.json` を用意する

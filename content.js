@@ -368,21 +368,53 @@ function ensureInlineYouTubePlayerDom() {
   shell.id = INLINE_VIDEO_SHELL_ID;
   shell.className = 'rc-inline-youtube-shell';
   shell.hidden = true;
-  shell.innerHTML = `
-    <div class="rc-inline-youtube-header">
-      <div id="${INLINE_VIDEO_TITLE_ID}" class="rc-inline-youtube-title">Now Playing</div>
-      <div class="rc-inline-youtube-actions">
-        <a id="${INLINE_VIDEO_OPEN_ID}" class="rc-inline-youtube-open" href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer">開く</a>
-        <button id="${INLINE_VIDEO_CLOSE_ID}" type="button" class="rc-inline-youtube-close" aria-label="Close video player">×</button>
-      </div>
-    </div>
-    <div class="rc-inline-youtube-frame">
-      <iframe id="${INLINE_VIDEO_IFRAME_ID}" title="Inline video player" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-    </div>
-  `;
+
+  const header = document.createElement('div');
+  header.className = 'rc-inline-youtube-header';
+
+  const title = document.createElement('div');
+  title.id = INLINE_VIDEO_TITLE_ID;
+  title.className = 'rc-inline-youtube-title';
+  title.textContent = 'Now Playing';
+
+  const actions = document.createElement('div');
+  actions.className = 'rc-inline-youtube-actions';
+
+  const openLink = document.createElement('a');
+  openLink.id = INLINE_VIDEO_OPEN_ID;
+  openLink.className = 'rc-inline-youtube-open';
+  openLink.href = 'https://www.youtube.com/';
+  openLink.target = '_blank';
+  openLink.rel = 'noopener noreferrer';
+  openLink.textContent = '開く';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.id = INLINE_VIDEO_CLOSE_ID;
+  closeBtn.type = 'button';
+  closeBtn.className = 'rc-inline-youtube-close';
+  closeBtn.setAttribute('aria-label', 'Close video player');
+  closeBtn.textContent = '×';
+  closeBtn.addEventListener('click', () => closeInlineYouTubePlayer());
+
+  actions.appendChild(openLink);
+  actions.appendChild(closeBtn);
+  header.appendChild(title);
+  header.appendChild(actions);
+
+  const frame = document.createElement('div');
+  frame.className = 'rc-inline-youtube-frame';
+
+  const iframe = document.createElement('iframe');
+  iframe.id = INLINE_VIDEO_IFRAME_ID;
+  iframe.title = 'Inline video player';
+  iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+  iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+  iframe.allowFullscreen = true;
+
+  frame.appendChild(iframe);
+  shell.appendChild(header);
+  shell.appendChild(frame);
   (document.body || document.documentElement).appendChild(shell);
-  const closeBtn = document.getElementById(INLINE_VIDEO_CLOSE_ID);
-  closeBtn?.addEventListener('click', () => closeInlineYouTubePlayer());
   return shell;
 }
 
@@ -520,9 +552,10 @@ function moveOrRemoveBracketBarSpan(span, options) {
     if (removeBarChordBeforeLyricsBar(span)) return true;
     const parent = span.parentNode;
     const isFirstChild = parent && parent.firstElementChild === span;
-    span.outerHTML = isFirstChild
-      ? `<span class="wordtop">| </span>`
-      : `<span class="word"> | </span>`;
+    const lyricSpan = document.createElement('span');
+    lyricSpan.className = isFirstChild ? 'wordtop' : 'word';
+    lyricSpan.textContent = isFirstChild ? '| ' : ' | ';
+    span.replaceWith(lyricSpan);
     return true;
   }
 
@@ -711,11 +744,10 @@ function processChordBarsAndWordtops(options = {}) {
       ) {
         const parent = span.parentNode;
         const isFirstChild = parent && parent.firstElementChild === span;
-        if (isFirstChild) {
-          span.outerHTML = `<span class="wordtop">| </span>`;
-        } else {
-          span.outerHTML = `<span class="word"> | </span>`;
-        }
+        const lyricSpan = document.createElement('span');
+        lyricSpan.className = isFirstChild ? 'wordtop' : 'word';
+        lyricSpan.textContent = isFirstChild ? '| ' : ' | ';
+        span.replaceWith(lyricSpan);
       }
     });
 
