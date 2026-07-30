@@ -171,14 +171,7 @@ footer.footer,
 }
 
 div.main {
-  padding: 0 0 0 6rem !important;
-}
-
-/* タブレット等の狭い幅では左余白を削り、譜面中央を広くする */
-@media (max-width: 900px) {
-  div.main {
-    padding-left: 0.75rem !important;
-  }
+  padding: 0 0 0 0.75rem !important;
 }
 
 h1.title {
