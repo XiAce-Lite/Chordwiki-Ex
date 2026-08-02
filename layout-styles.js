@@ -332,6 +332,7 @@ ${scope} span.rc-bar-extend-glyph {
   width: 0.35em;
   height: 1em;
   margin-left: 0.35em;
+  margin-right: 0.35em;
   vertical-align: baseline;
   overflow: visible;
   color: inherit;
@@ -345,6 +346,23 @@ ${scope} span.rc-bar-extend-glyph::before {
   height: calc(1em + ${barExtendUpwardRem}rem);
   background: currentColor;
   pointer-events: none;
+}
+${scope} span.rc-measure-bar {
+  display: inline-block;
+  margin-left: 0.35em;
+  margin-right: 0.35em;
+}
+${scope} span.rc-measure {
+  display: inline-flex;
+  justify-content: space-between;
+  align-items: baseline;
+  vertical-align: baseline;
+  box-sizing: border-box;
+}
+${scope} span.rc-beat {
+  display: inline-flex;
+  align-items: baseline;
+  flex: 0 0 auto;
 }
 `;
 

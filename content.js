@@ -230,7 +230,12 @@ function filterChordSpans(root) {
 const RC_BAR_AS_LYRIC_CLASS = 'rc-bar-as-lyric';
 const RC_BAR_EXTEND_CLASS = 'rc-bar-extend';
 const RC_BAR_EXTEND_GLYPH_CLASS = 'rc-bar-extend-glyph';
+const RC_MEASURE_CLASS = 'rc-measure';
+const RC_MEASURE_BAR_CLASS = 'rc-measure-bar';
+const RC_BEAT_CLASS = 'rc-beat';
+const MEASURE_BAR_SELECTOR = `span.${RC_BAR_EXTEND_GLYPH_CLASS}, span.${RC_MEASURE_BAR_CLASS}`;
 const LINE_SELECTOR = 'p.line';
+const SCORE_LINE_SELECTOR = 'p.line:not(.comment)';
 const LYRICS_SPAN_SELECTOR = 'span.word, span.wordtop';
 const VOICE_PART_SELECTOR = '.male, .male2, .female, .female2';
 // ChordWiki 互換: ♠=male ♣=male2 ♥=female ♦=female2（白塗り・絵文字も拾う）
@@ -728,15 +733,22 @@ function isBarOnlyLyricsSpan(span) {
 }
 
 function clearLyricBarExtendMarks() {
+  document.querySelectorAll(SCORE_LINE_SELECTOR).forEach((line) => {
+    unwrapMeasureLayout(line);
+    line.classList.remove('rc-measure-align');
+  });
   document.querySelectorAll(`span.${RC_BAR_EXTEND_GLYPH_CLASS}`).forEach((glyph) => {
     glyph.replaceWith(document.createTextNode('|'));
+  });
+  document.querySelectorAll(`span.${RC_MEASURE_BAR_CLASS}`).forEach((glyph) => {
+    glyph.replaceWith(document.createTextNode(glyph.textContent || '|'));
   });
   document.querySelectorAll(`span.${RC_BAR_EXTEND_CLASS}`).forEach((span) => {
     span.classList.remove(RC_BAR_EXTEND_CLASS);
   });
 }
 
-function wrapPipesInTextNode(textNode) {
+function wrapPipesInTextNode(textNode, createGlyph) {
   const text = textNode.nodeValue;
   if (!text || !text.includes('|') || !textNode.parentNode) return false;
 
@@ -751,14 +763,25 @@ function wrapPipesInTextNode(textNode) {
     if (idx > 0) {
       fragment.appendChild(document.createTextNode(remaining.slice(0, idx)));
     }
-    const glyph = document.createElement('span');
-    glyph.className = RC_BAR_EXTEND_GLYPH_CLASS;
-    glyph.setAttribute('aria-hidden', 'true');
-    fragment.appendChild(glyph);
+    fragment.appendChild(createGlyph());
     remaining = remaining.slice(idx + 1);
   }
   textNode.parentNode.replaceChild(fragment, textNode);
   return true;
+}
+
+function createExtendBarGlyph() {
+  const glyph = document.createElement('span');
+  glyph.className = RC_BAR_EXTEND_GLYPH_CLASS;
+  glyph.setAttribute('aria-hidden', 'true');
+  return glyph;
+}
+
+function createPlainMeasureBarGlyph() {
+  const glyph = document.createElement('span');
+  glyph.className = RC_MEASURE_BAR_CLASS;
+  glyph.textContent = '|';
+  return glyph;
 }
 
 // ブラウザズーム 100% 前提: 実 DPR で 1 デバイスピクセル幅にし、左端を画素境界へ合わせる
@@ -828,8 +851,9 @@ function restoreVoiceMarkersInSpan(span) {
 }
 
 // male/female 等の子要素を壊さないよう、テキストノード内の | だけをラップする
-function wrapAllPipesInLyricSpan(span) {
+function wrapAllPipesInLyricSpan(span, createGlyph) {
   if (!span.textContent.includes('|')) return;
+  const factory = createGlyph || createExtendBarGlyph;
 
   const textNodes = [];
   const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
@@ -838,13 +862,16 @@ function wrapAllPipesInLyricSpan(span) {
     if (node.parentElement && node.parentElement.classList.contains(RC_BAR_EXTEND_GLYPH_CLASS)) {
       continue;
     }
+    if (node.parentElement && node.parentElement.classList.contains(RC_MEASURE_BAR_CLASS)) {
+      continue;
+    }
     textNodes.push(node);
   }
 
   let wrapped = false;
   textNodes.forEach((textNode) => {
     if (!textNode.isConnected) return;
-    if (wrapPipesInTextNode(textNode)) wrapped = true;
+    if (wrapPipesInTextNode(textNode, factory)) wrapped = true;
   });
   if (wrapped) span.classList.add(RC_BAR_EXTEND_CLASS);
   restoreVoiceMarkersInSpan(span);
@@ -855,7 +882,7 @@ function markLyricBarExtendSpans(enabled) {
   clearLyricBarExtendMarks();
   if (enabled) {
     document.querySelectorAll(LYRICS_SPAN_SELECTOR).forEach((span) => {
-      if (span.textContent.includes('|')) wrapAllPipesInLyricSpan(span);
+      if (span.textContent.includes('|')) wrapAllPipesInLyricSpan(span, createExtendBarGlyph);
       else restoreVoiceMarkersInSpan(span);
     });
     ensureBarExtendSnapListeners();
@@ -863,9 +890,249 @@ function markLyricBarExtendSpans(enabled) {
   }
 }
 
+// 揃え用に | をプレーンな小節線 span にする（延伸 OFF 時）
+function markPlainMeasureBarSpans() {
+  document.querySelectorAll(LYRICS_SPAN_SELECTOR).forEach((span) => {
+    if (!span.textContent.includes('|')) return;
+    if (span.querySelector(MEASURE_BAR_SELECTOR)) return;
+    wrapAllPipesInLyricSpan(span, createPlainMeasureBarGlyph);
+  });
+}
+
 // 譜面全体の声部記号を ChordWiki 形式の別要素に戻す（延伸の有無に依存しない）
 function restoreAllVoiceMarkers() {
   document.querySelectorAll(LYRICS_SPAN_SELECTOR).forEach(restoreVoiceMarkersInSpan);
+}
+
+function isMeasureBarElement(el) {
+  return !!(
+    el &&
+    el.nodeType === Node.ELEMENT_NODE &&
+    el.classList &&
+    (el.classList.contains(RC_BAR_EXTEND_GLYPH_CLASS) || el.classList.contains(RC_MEASURE_BAR_CLASS))
+  );
+}
+
+function unwrapMeasureLayout(line) {
+  line.querySelectorAll(`span.${RC_BEAT_CLASS}`).forEach((beat) => {
+    const parent = beat.parentNode;
+    if (!parent) return;
+    while (beat.firstChild) parent.insertBefore(beat.firstChild, beat);
+    beat.remove();
+  });
+  line.querySelectorAll(`span.${RC_MEASURE_CLASS}`).forEach((measure) => {
+    const parent = measure.parentNode;
+    if (!parent) return;
+    while (measure.firstChild) parent.insertBefore(measure.firstChild, measure);
+    measure.remove();
+  });
+}
+
+// コード＋直後の歌詞を 1 拍ユニットにまとめる（space-between の右寄せ見え対策）
+function wrapMeasureIntoBeats(measure) {
+  Array.from(measure.querySelectorAll(`:scope > span.${RC_BEAT_CLASS}`)).forEach((beat) => {
+    while (beat.firstChild) measure.insertBefore(beat.firstChild, beat);
+    beat.remove();
+  });
+
+  const nodes = Array.from(measure.childNodes);
+  if (!nodes.length) return;
+
+  const groups = [];
+  let current = [];
+  const flush = () => {
+    if (!current.length) return;
+    groups.push(current);
+    current = [];
+  };
+  const groupHasChord = () =>
+    current.some((n) => n.nodeType === Node.ELEMENT_NODE && n.classList.contains('chord'));
+
+  nodes.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (!cleanText(node.textContent)) {
+        if (current.length) current.push(node);
+        return;
+      }
+      if (groupHasChord()) current.push(node);
+      else {
+        flush();
+        current.push(node);
+      }
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      if (current.length) current.push(node);
+      return;
+    }
+
+    const isChord = node.classList.contains('chord');
+    const isWord = node.classList.contains('word') || node.classList.contains('wordtop');
+
+    if (isChord) {
+      flush();
+      current.push(node);
+      return;
+    }
+    if (isWord) {
+      if (groupHasChord() || (current.length && !groupHasChord())) {
+        current.push(node);
+      } else {
+        flush();
+        current.push(node);
+      }
+      return;
+    }
+
+    flush();
+    current.push(node);
+    flush();
+  });
+  flush();
+
+  groups.forEach((group) => {
+    if (!group.length) return;
+    if (group.length === 1 && group[0].nodeType === Node.TEXT_NODE && !cleanText(group[0].textContent)) {
+      return;
+    }
+    const beat = document.createElement('span');
+    beat.className = RC_BEAT_CLASS;
+    group[0].before(beat);
+    group.forEach((n) => beat.appendChild(n));
+  });
+}
+
+// ネストした小節線グリフを p.line 直下へ引き上げる
+function promoteMeasureBars(line) {
+  Array.from(line.querySelectorAll(MEASURE_BAR_SELECTOR)).forEach((bar) => {
+    const parent = bar.parentElement;
+    if (!parent || parent === line) return;
+    if (!parent.classList.contains('word') && !parent.classList.contains('wordtop')) return;
+
+    if (bar.previousSibling) {
+      const beforeSpan = parent.cloneNode(false);
+      while (bar.previousSibling) {
+        beforeSpan.insertBefore(bar.previousSibling, beforeSpan.firstChild);
+      }
+      if (cleanText(beforeSpan.textContent) || beforeSpan.querySelector(VOICE_PART_SELECTOR)) {
+        parent.parentNode.insertBefore(beforeSpan, parent);
+      }
+    }
+    parent.parentNode.insertBefore(bar, parent);
+    if (!parent.firstChild || (!cleanText(parent.textContent) && !parent.querySelector(VOICE_PART_SELECTOR))) {
+      parent.remove();
+    }
+  });
+}
+
+function wrapLineIntoMeasures(line) {
+  unwrapMeasureLayout(line);
+  promoteMeasureBars(line);
+
+  const children = Array.from(line.children);
+  const barIndexes = [];
+  children.forEach((el, idx) => {
+    if (isMeasureBarElement(el)) barIndexes.push(idx);
+  });
+  if (barIndexes.length < 2) return null;
+
+  for (let b = barIndexes.length - 2; b >= 0; b--) {
+    const start = barIndexes[b];
+    const end = barIndexes[b + 1];
+    const nodes = children.slice(start + 1, end);
+    const wrapper = document.createElement('span');
+    wrapper.className = RC_MEASURE_CLASS;
+    if (nodes.length) {
+      nodes[0].before(wrapper);
+      nodes.forEach((n) => wrapper.appendChild(n));
+    } else {
+      children[start].after(wrapper);
+    }
+    wrapMeasureIntoBeats(wrapper);
+  }
+
+  return {
+    line,
+    bars: Array.from(line.querySelectorAll(`:scope > ${MEASURE_BAR_SELECTOR}`)),
+    measures: Array.from(line.querySelectorAll(`:scope > span.${RC_MEASURE_CLASS}`))
+  };
+}
+
+function hasBlockBoundaryBetween(fromLine, toLine) {
+  let el = fromLine.nextElementSibling;
+  while (el && el !== toLine) {
+    if (el.tagName === 'BR') return true;
+    if (el.matches && el.matches('p.line.comment, p.comment, p.key')) return true;
+    if (el.matches && el.matches(SCORE_LINE_SELECTOR)) return false;
+    el = el.nextElementSibling;
+  }
+  return el !== toLine;
+}
+
+function collectScoreLineBlocks() {
+  const lines = Array.from(document.querySelectorAll(SCORE_LINE_SELECTOR));
+  const blocks = [];
+  let current = [];
+
+  lines.forEach((line) => {
+    if (!current.length) {
+      current.push(line);
+      return;
+    }
+    const prev = current[current.length - 1];
+    if (hasBlockBoundaryBetween(prev, line)) {
+      blocks.push(current);
+      current = [line];
+    } else {
+      current.push(line);
+    }
+  });
+  if (current.length) blocks.push(current);
+  return blocks;
+}
+
+function applyMeasureColumnWidths(parsedLines) {
+  const maxMeasures = Math.max(0, ...parsedLines.map((p) => p.measures.length));
+  if (maxMeasures === 0) return;
+
+  const colWidths = Array(maxMeasures).fill(0);
+  parsedLines.forEach((p) => {
+    p.measures.forEach((measure, i) => {
+      measure.style.minWidth = '';
+      measure.style.width = '';
+      const w = measure.getBoundingClientRect().width;
+      if (w > colWidths[i]) colWidths[i] = w;
+    });
+  });
+
+  parsedLines.forEach((p) => {
+    p.line.classList.add('rc-measure-align');
+    p.measures.forEach((measure, i) => {
+      const w = Math.ceil(colWidths[i]);
+      measure.style.boxSizing = 'border-box';
+      measure.style.display = 'inline-flex';
+      measure.style.justifyContent = 'space-between';
+      measure.style.alignItems = 'baseline';
+      measure.style.verticalAlign = 'baseline';
+      measure.style.minWidth = `${w}px`;
+      measure.style.width = `${w}px`;
+    });
+  });
+}
+
+function alignMeasureBarsInBlocks() {
+  const blocks = collectScoreLineBlocks();
+  blocks.forEach((lines) => {
+    const parsedLines = [];
+    lines.forEach((line) => {
+      const parsed = wrapLineIntoMeasures(line);
+      if (parsed && parsed.measures.length > 0) parsedLines.push(parsed);
+    });
+    if (parsedLines.length < 2) return;
+
+    // 小節が少ない行は空小節で埋めず末尾も閉じない。先頭からの列幅だけ揃える
+    applyMeasureColumnWidths(parsedLines);
+  });
 }
 
 // 行頭の wordtop| + word| など連続小節線を 1 つの wordtop にまとめる
@@ -965,6 +1232,7 @@ function replaceCharMain(adjustChordPos = true, mnotoEnabled = true, domOptions 
   const moveBarToLyrics = domOptions.moveBarToLyrics === true;
   const moveOverflowLyrics = domOptions.moveOverflowLyrics !== false;
   const extendBarUpward = moveBarToLyrics && domOptions.extendBarUpward === true;
+  const alignMeasureBars = moveBarToLyrics && domOptions.alignMeasureBars === true;
 
   removeEmptyWordtopSpans();
   processChordBarsAndWordtops({ moveBarToLyrics, moveOverflowLyrics });
@@ -975,20 +1243,27 @@ function replaceCharMain(adjustChordPos = true, mnotoEnabled = true, domOptions 
   if (adjustChordPos) adjustWordLeftToChord();
   if (!moveBarToLyrics) markChordLineBarSpans();
   markLyricBarExtendSpans(extendBarUpward);
+  if (alignMeasureBars && !extendBarUpward) markPlainMeasureBarSpans();
   restoreAllVoiceMarkers();
+  if (alignMeasureBars) {
+    alignMeasureBarsInBlocks();
+    if (extendBarUpward) scheduleSnapLyricBarExtendGlyphs();
+  }
 }
 
 const DOM_OPTION_KEYS = [
   'moveBarToLyricsEnabled',
   'moveOverflowLyricsEnabled',
-  'extendBarUpwardEnabled'
+  'extendBarUpwardEnabled',
+  'alignMeasureBarsEnabled'
 ];
 
 function normalizeDomOptions(data) {
   return {
     moveBarToLyrics: data.moveBarToLyricsEnabled !== false,
     moveOverflowLyrics: data.moveOverflowLyricsEnabled !== false,
-    extendBarUpward: data.extendBarUpwardEnabled === true
+    extendBarUpward: data.extendBarUpwardEnabled === true,
+    alignMeasureBars: data.alignMeasureBarsEnabled === true
   };
 }
 
@@ -1035,6 +1310,32 @@ chrome.storage.sync.get(['enabled', 'adjustChordPos', 'mnotoEnabled'], ({ enable
   }
 });
 
+// クイックパネルは content.js 側からも起動（別ファイル未読込・失敗時の保険）
+(function ensureQuickPanelFromContent() {
+  const start = () => {
+    try {
+      if (globalThis.RCExQuickPanel && typeof globalThis.RCExQuickPanel.boot === 'function') {
+        globalThis.RCExQuickPanel.boot();
+      }
+    } catch (e) {
+      console.error('[Chordwiki-Ex] RCExQuickPanel.boot error:', e);
+    }
+    // quick-panel.js が無い／失敗した場合の最小チップ
+    if (!document.getElementById('rc-ex-quick-ui')) {
+      const chip = document.createElement('div');
+      chip.id = 'rc-ex-quick-ui';
+      chip.textContent = 'Chordwiki-Ex';
+      chip.setAttribute('data-cw-ignore-autoscroll', '1');
+      chip.style.cssText = 'position:fixed;top:120px;right:22px;z-index:2147483646;padding:8px 10px;border:1px solid #d6e7f8;border-radius:12px;background:rgba(247,251,255,0.97);color:#0f4c81;font:700 14px/1.3 system-ui,Meiryo,sans-serif;';
+      (document.documentElement || document.body).appendChild(chip);
+      console.warn('[Chordwiki-Ex] quick-panel.js missing; fallback chip only');
+    }
+  };
+  start();
+  setTimeout(start, 500);
+  setTimeout(start, 1500);
+})();
+
 if (chrome.storage && chrome.storage.onChanged) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync') return;
@@ -1079,22 +1380,9 @@ if (chrome.storage && chrome.storage.onChanged) {
     }
 
     if (changes.adjustChordPos || changes.mnotoEnabled || isDomOptionStorageChange(changes)) {
-      if (isDomOptionStorageChange(changes)) {
-        if (chrome.tabs) {
-          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs[0]?.id) chrome.tabs.reload(tabs[0].id);
-          });
-        }
-        return;
-      }
-      chrome.storage.sync.get(['adjustChordPos', 'mnotoEnabled'], ({ adjustChordPos, mnotoEnabled }) => {
-        window.RCLayout.loadLayoutSettings((layout) => {
-          window.RCLayout.applyReplaceCharStyles({ ...layout, mnotoEnabled: mnotoEnabled !== false });
-        });
-        loadDomProcessingOptions((domOptions) => {
-          runReplaceCharDom(adjustChordPos, mnotoEnabled, domOptions);
-        });
-      });
+      // DOM 加工系は再実行よりページ再読込の方が安全（popup も同様）
+      location.reload();
+      return;
     }
   });
 }

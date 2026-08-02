@@ -15,6 +15,8 @@ $root = $PSScriptRoot
 if (-not $root) { $root = Get-Location }
 
 $includeFiles = @(
+    "quick-panel.js",
+    "quick-panel.css",
     "content.js",
     "layout-styles.js",
     "popup.html",
