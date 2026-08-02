@@ -6,6 +6,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const mnotoSwitch = document.getElementById('mnoto-switch');
   const moveOverflowSwitch = document.getElementById('move-overflow-switch');
   const moveBarSwitch = document.getElementById('move-bar-switch');
+  const extendBarSwitch = document.getElementById('extend-bar-switch');
+  const labelExtendBar = document.getElementById('label-extend-bar-main');
   const inlineVideoSwitch = document.getElementById('inline-video-switch');
 
   const chordValignSwitch = document.getElementById('chord-valign-switch');
@@ -32,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const subControls = [
     adjustSwitch, mnotoSwitch,
-    moveOverflowSwitch, moveBarSwitch, inlineVideoSwitch,
+    moveOverflowSwitch, moveBarSwitch, extendBarSwitch, inlineVideoSwitch,
     chordValignSwitch, chordValignRem, lineSpacingSwitch, linePaddingTopRem,
     commentLayoutSwitch, commentPaddingTopRem, blankLineSwitch, blankLineHeightRem,
     chordColorSwitch, chordColor,
@@ -49,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const storageKeys = [
     'enabled', 'adjustChordPos', 'mnotoEnabled',
-    'moveOverflowLyricsEnabled', 'moveBarToLyricsEnabled',
+    'moveOverflowLyricsEnabled', 'moveBarToLyricsEnabled', 'extendBarUpwardEnabled',
     'inlineVideoEnabled',
     'chordValignEnabled', 'chordValignRem',
     'lineSpacingEnabled', 'linePaddingTopRem',
@@ -67,6 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
     mnotoSwitch.checked = data.mnotoEnabled !== false;
     moveOverflowSwitch.checked = data.moveOverflowLyricsEnabled !== false;
     moveBarSwitch.checked = data.moveBarToLyricsEnabled !== false;
+    extendBarSwitch.checked = data.extendBarUpwardEnabled === true;
     inlineVideoSwitch.checked = data.inlineVideoEnabled !== false;
     chordValignSwitch.checked = data.chordValignEnabled !== false;
     lineSpacingSwitch.checked = data.lineSpacingEnabled !== false;
@@ -112,6 +115,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   moveBarSwitch.addEventListener('change', () => {
     chrome.storage.sync.set({ moveBarToLyricsEnabled: moveBarSwitch.checked }, reloadActiveTab);
+    syncExtendBarAvailability();
+  });
+
+  extendBarSwitch.addEventListener('change', () => {
+    chrome.storage.sync.set({ extendBarUpwardEnabled: extendBarSwitch.checked }, reloadActiveTab);
   });
 
   inlineVideoSwitch.addEventListener('change', () => {
@@ -176,9 +184,16 @@ document.addEventListener('DOMContentLoaded', () => {
     el.addEventListener('input', save);
   }
 
+  function syncExtendBarAvailability() {
+    const available = toggle.checked && moveBarSwitch.checked;
+    extendBarSwitch.disabled = !available;
+    if (labelExtendBar) labelExtendBar.classList.toggle('disabled-label', !available);
+  }
+
   function setSubControlsEnabled(enabled) {
     subControls.forEach((el) => { el.disabled = !enabled; });
     disableTargets.forEach((el) => el.classList.toggle('disabled-label', !enabled));
+    syncExtendBarAvailability();
   }
 
   function reloadActiveTab() {

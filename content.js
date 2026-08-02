@@ -190,6 +190,14 @@ function setFirstSpanToWordtop() {
     if (!firstLyrics.classList.contains('word')) return;
     firstLyrics.classList.add('wordtop');
     firstLyrics.classList.remove('word');
+    // male/female 等の子要素を壊さない（textContent 代入は使わない）
+    if (firstLyrics.querySelector(VOICE_PART_SELECTOR) || firstLyrics.children.length > 0) {
+      const first = firstLyrics.firstChild;
+      if (first && first.nodeType === Node.TEXT_NODE) {
+        first.nodeValue = first.nodeValue.replace(/^\s+/, '');
+      }
+      return;
+    }
     let txt = firstLyrics.textContent.replace(/^\s+/, '');
     if (txt === '|') txt = '| ';
     firstLyrics.textContent = txt;
@@ -220,8 +228,24 @@ function filterChordSpans(root) {
 }
 
 const RC_BAR_AS_LYRIC_CLASS = 'rc-bar-as-lyric';
+const RC_BAR_EXTEND_CLASS = 'rc-bar-extend';
+const RC_BAR_EXTEND_GLYPH_CLASS = 'rc-bar-extend-glyph';
 const LINE_SELECTOR = 'p.line';
 const LYRICS_SPAN_SELECTOR = 'span.word, span.wordtop';
+const VOICE_PART_SELECTOR = '.male, .male2, .female, .female2';
+// ChordWiki 互換: ♠=male ♣=male2 ♥=female ♦=female2（白塗り・絵文字も拾う）
+const VOICE_MARKER_CLASS_MAP = Object.freeze({
+  '\u2660': 'male',
+  '\u2664': 'male',
+  '\u2663': 'male2',
+  '\u2667': 'male2',
+  '\u2665': 'female',
+  '\u2661': 'female',
+  '\u2666': 'female2',
+  '\u2662': 'female2',
+  '\u2764': 'female'
+});
+const VOICE_MARKER_RE = /[\u2660\u2664\u2663\u2667\u2665\u2661\u2666\u2662\u2764]/;
 const INLINE_VIDEO_SHELL_ID = 'rc-inline-youtube-shell';
 const INLINE_VIDEO_IFRAME_ID = 'rc-inline-youtube-iframe';
 const INLINE_VIDEO_TITLE_ID = 'rc-inline-youtube-title';
@@ -671,7 +695,8 @@ function moveOverflowWordtops() {
     const lastElem = parentP.lastElementChild;
     if (lastElem && lastElem.textContent && /\|\s*$/.test(lastElem.textContent)) {
       addText = ' ' + overflowText + ' |';
-      lastElem.textContent = lastElem.textContent.replace(/\|\s*$/, '');
+      // textContent 代入は male/female を壊すので末尾テキストノードだけ削る
+      stripTrailingBarFromElement(lastElem);
     }
     parentP.appendChild(document.createTextNode(addText));
 
@@ -680,9 +705,167 @@ function moveOverflowWordtops() {
   });
 }
 
+function stripTrailingBarFromElement(el) {
+  if (!el) return;
+  if (el.querySelector(VOICE_PART_SELECTOR) || el.children.length > 0) {
+    for (let node = el.lastChild; node; node = node.previousSibling) {
+      if (node.nodeType !== Node.TEXT_NODE) continue;
+      const next = node.nodeValue.replace(/\|\s*$/, '');
+      if (next !== node.nodeValue) {
+        if (next) node.nodeValue = next;
+        else node.remove();
+      }
+      break;
+    }
+    return;
+  }
+  el.textContent = el.textContent.replace(/\|\s*$/, '');
+}
+
 function isBarOnlyLyricsSpan(span) {
   if (!isLyricsSpan(span)) return false;
   return cleanText(span.textContent) === '|';
+}
+
+function clearLyricBarExtendMarks() {
+  document.querySelectorAll(`span.${RC_BAR_EXTEND_GLYPH_CLASS}`).forEach((glyph) => {
+    glyph.replaceWith(document.createTextNode('|'));
+  });
+  document.querySelectorAll(`span.${RC_BAR_EXTEND_CLASS}`).forEach((span) => {
+    span.classList.remove(RC_BAR_EXTEND_CLASS);
+  });
+}
+
+function wrapPipesInTextNode(textNode) {
+  const text = textNode.nodeValue;
+  if (!text || !text.includes('|') || !textNode.parentNode) return false;
+
+  const fragment = document.createDocumentFragment();
+  let remaining = text;
+  while (remaining.length) {
+    const idx = remaining.indexOf('|');
+    if (idx === -1) {
+      fragment.appendChild(document.createTextNode(remaining));
+      break;
+    }
+    if (idx > 0) {
+      fragment.appendChild(document.createTextNode(remaining.slice(0, idx)));
+    }
+    const glyph = document.createElement('span');
+    glyph.className = RC_BAR_EXTEND_GLYPH_CLASS;
+    glyph.setAttribute('aria-hidden', 'true');
+    fragment.appendChild(glyph);
+    remaining = remaining.slice(idx + 1);
+  }
+  textNode.parentNode.replaceChild(fragment, textNode);
+  return true;
+}
+
+// ブラウザズーム 100% 前提: 実 DPR で 1 デバイスピクセル幅にし、左端を画素境界へ合わせる
+function snapLyricBarExtendGlyphs() {
+  const dpr = window.devicePixelRatio || 1;
+  const hairW = 1 / dpr;
+  document.querySelectorAll(`span.${RC_BAR_EXTEND_GLYPH_CLASS}`).forEach((glyph) => {
+    glyph.style.setProperty('--rc-bar-hair-w', `${hairW}px`);
+    glyph.style.removeProperty('--rc-bar-snap-x');
+    const left = glyph.getBoundingClientRect().left;
+    const snapped = Math.round(left * dpr) / dpr;
+    const delta = snapped - left;
+    glyph.style.setProperty('--rc-bar-snap-x', `${delta}px`);
+  });
+}
+
+function scheduleSnapLyricBarExtendGlyphs() {
+  snapLyricBarExtendGlyphs();
+  requestAnimationFrame(() => {
+    snapLyricBarExtendGlyphs();
+    requestAnimationFrame(snapLyricBarExtendGlyphs);
+  });
+}
+
+let barExtendSnapListening = false;
+function ensureBarExtendSnapListeners() {
+  if (barExtendSnapListening) return;
+  barExtendSnapListening = true;
+  // ウィンドウリサイズ時のみ（ズーム追従はしない = 100% 利用を想定）
+  window.addEventListener('resize', () => scheduleSnapLyricBarExtendGlyphs());
+}
+
+// 素の ♠♣♥♦ を ChordWiki と同じ male/female 系 span に戻す
+function wrapVoiceMarkersInTextNode(textNode) {
+  const text = textNode.nodeValue;
+  if (!text || !VOICE_MARKER_RE.test(text) || !textNode.parentNode) return false;
+  if (textNode.parentElement && textNode.parentElement.matches(VOICE_PART_SELECTOR)) return false;
+
+  const fragment = document.createDocumentFragment();
+  for (const ch of text) {
+    const cls = VOICE_MARKER_CLASS_MAP[ch];
+    if (cls) {
+      const marker = document.createElement('span');
+      marker.className = cls;
+      marker.textContent = ch;
+      fragment.appendChild(marker);
+    } else {
+      fragment.appendChild(document.createTextNode(ch));
+    }
+  }
+  textNode.parentNode.replaceChild(fragment, textNode);
+  return true;
+}
+
+function restoreVoiceMarkersInSpan(span) {
+  if (!VOICE_MARKER_RE.test(span.textContent || '')) return;
+
+  const textNodes = [];
+  const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) {
+    if (node.parentElement && node.parentElement.classList.contains(RC_BAR_EXTEND_GLYPH_CLASS)) continue;
+    if (node.parentElement && node.parentElement.matches(VOICE_PART_SELECTOR)) continue;
+    textNodes.push(node);
+  }
+  textNodes.forEach(wrapVoiceMarkersInTextNode);
+}
+
+// male/female 等の子要素を壊さないよう、テキストノード内の | だけをラップする
+function wrapAllPipesInLyricSpan(span) {
+  if (!span.textContent.includes('|')) return;
+
+  const textNodes = [];
+  const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) {
+    if (node.parentElement && node.parentElement.classList.contains(RC_BAR_EXTEND_GLYPH_CLASS)) {
+      continue;
+    }
+    textNodes.push(node);
+  }
+
+  let wrapped = false;
+  textNodes.forEach((textNode) => {
+    if (!textNode.isConnected) return;
+    if (wrapPipesInTextNode(textNode)) wrapped = true;
+  });
+  if (wrapped) span.classList.add(RC_BAR_EXTEND_CLASS);
+  restoreVoiceMarkersInSpan(span);
+}
+
+// 歌詞内のすべての | を延伸用グリフ化（wordtop 結合後の埋め込み | も含む）
+function markLyricBarExtendSpans(enabled) {
+  clearLyricBarExtendMarks();
+  if (enabled) {
+    document.querySelectorAll(LYRICS_SPAN_SELECTOR).forEach((span) => {
+      if (span.textContent.includes('|')) wrapAllPipesInLyricSpan(span);
+      else restoreVoiceMarkersInSpan(span);
+    });
+    ensureBarExtendSnapListeners();
+    scheduleSnapLyricBarExtendGlyphs();
+  }
+}
+
+// 譜面全体の声部記号を ChordWiki 形式の別要素に戻す（延伸の有無に依存しない）
+function restoreAllVoiceMarkers() {
+  document.querySelectorAll(LYRICS_SPAN_SELECTOR).forEach(restoreVoiceMarkersInSpan);
 }
 
 // 行頭の wordtop| + word| など連続小節線を 1 つの wordtop にまとめる
@@ -781,6 +964,7 @@ function processChordBarsAndWordtops(options = {}) {
 function replaceCharMain(adjustChordPos = true, mnotoEnabled = true, domOptions = {}) {
   const moveBarToLyrics = domOptions.moveBarToLyrics === true;
   const moveOverflowLyrics = domOptions.moveOverflowLyrics !== false;
+  const extendBarUpward = moveBarToLyrics && domOptions.extendBarUpward === true;
 
   removeEmptyWordtopSpans();
   processChordBarsAndWordtops({ moveBarToLyrics, moveOverflowLyrics });
@@ -790,17 +974,21 @@ function replaceCharMain(adjustChordPos = true, mnotoEnabled = true, domOptions 
   replaceMajToM();
   if (adjustChordPos) adjustWordLeftToChord();
   if (!moveBarToLyrics) markChordLineBarSpans();
+  markLyricBarExtendSpans(extendBarUpward);
+  restoreAllVoiceMarkers();
 }
 
 const DOM_OPTION_KEYS = [
   'moveBarToLyricsEnabled',
-  'moveOverflowLyricsEnabled'
+  'moveOverflowLyricsEnabled',
+  'extendBarUpwardEnabled'
 ];
 
 function normalizeDomOptions(data) {
   return {
     moveBarToLyrics: data.moveBarToLyricsEnabled !== false,
-    moveOverflowLyrics: data.moveOverflowLyricsEnabled !== false
+    moveOverflowLyrics: data.moveOverflowLyricsEnabled !== false,
+    extendBarUpward: data.extendBarUpwardEnabled === true
   };
 }
 

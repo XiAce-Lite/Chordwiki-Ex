@@ -100,6 +100,7 @@
       color: #555;
     }
     .subgroup { margin-left: 0; }
+    .toggle-nested { margin-left: 28px; }
     .disabled-label { color: #aaa !important; }
     .disabled-label .toggle-slider { opacity: 0.6; }
   </style>
@@ -131,6 +132,11 @@
       <input type="checkbox" id="move-bar-switch" class="toggle-input">
       <span class="toggle-slider"></span>
       <span>コード行の|を歌詞行へ移動</span>
+    </label>
+    <label class="toggle-label toggle-nested" id="label-extend-bar-main">
+      <input type="checkbox" id="extend-bar-switch" class="toggle-input">
+      <span class="toggle-slider"></span>
+      <span>コード行に|を延伸</span>
     </label>
   </div>
 

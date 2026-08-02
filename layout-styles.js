@@ -318,6 +318,36 @@ ${chordBarOnLineSelector()} {
 `;
     }
 
+    // 歌詞内の | を一本の縦線として延伸（ブラウザズーム 100% / 実 DPR 向けに最適化）
+    const barExtendUpwardRem = s.chordValignEnabled ? Math.abs(s.chordValignRem) : 0;
+    css += `${scope} p.line {
+  overflow: visible !important;
+}
+${scope} span.rc-bar-extend {
+  overflow: visible;
+}
+${scope} span.rc-bar-extend-glyph {
+  position: relative;
+  display: inline-block;
+  width: 0.35em;
+  height: 1em;
+  margin-left: 0.35em;
+  vertical-align: baseline;
+  overflow: visible;
+  color: inherit;
+}
+${scope} span.rc-bar-extend-glyph::before {
+  content: '';
+  position: absolute;
+  left: var(--rc-bar-snap-x, 0px);
+  width: var(--rc-bar-hair-w, 1px);
+  bottom: -0.2em;
+  height: calc(1em + ${barExtendUpwardRem}rem);
+  background: currentColor;
+  pointer-events: none;
+}
+`;
+
     if (s.lineSpacingEnabled) {
       css += `${scope} p.line:not(.comment) {
   padding-top: ${s.linePaddingTopRem}rem !important;
