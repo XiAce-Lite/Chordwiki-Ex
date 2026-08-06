@@ -1,6 +1,6 @@
 {
   "name": "Chordwiki-Ex",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "manifest_version": 3,
   "description": "日本語 ChordWiki（ja.chordwiki.org）のコード譜を、DOM 加工と CSS で読みやすく整える Chrome 拡張。",
   "icons": {
