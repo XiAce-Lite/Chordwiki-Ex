@@ -735,31 +735,66 @@ function moveOverflowWordtops() {
   });
 }
 
+function isEmptyLyricsSpan(el) {
+  return !!(
+    isLyricsSpan(el) &&
+    !el.querySelector(VOICE_PART_SELECTOR) &&
+    !cleanText(el.textContent)
+  );
+}
+
+function isTrailingBarElement(el) {
+  if (!el || !el.classList) return false;
+  if (el.classList.contains('chord') && isChordLineBarOnly(el)) return true;
+  if (isBarOnlyLyricsSpan(el)) return true;
+  return false;
+}
+
+// 行末の空歌詞と閉じ小節線（歌詞の | / コードの [|]）を消費する
+function consumeTrailingMeasureBar(parentP) {
+  if (!parentP) return false;
+
+  const trimEmptyLyrics = () => {
+    while (parentP.lastElementChild && isEmptyLyricsSpan(parentP.lastElementChild)) {
+      parentP.lastElementChild.remove();
+    }
+  };
+
+  trimEmptyLyrics();
+  const last = parentP.lastElementChild;
+  if (!last) return false;
+
+  if (isTrailingBarElement(last)) {
+    last.remove();
+    trimEmptyLyrics();
+    return true;
+  }
+
+  if (isLyricsSpan(last) && last.textContent && /\|\s*$/.test(last.textContent)) {
+    stripTrailingBarFromElement(last);
+    if (isEmptyLyricsSpan(last) || (last.isConnected && !cleanText(last.textContent))) {
+      last.remove();
+    }
+    trimEmptyLyrics();
+    return true;
+  }
+
+  return false;
+}
+
 // 前行末尾へはみ出し歌詞を載せる（生テキストノードは使わない）
 function appendOverflowLyricsToLine(parentP, overflowText, options = {}) {
   const appendBar = options.appendBar === true;
-  const lastElem = parentP.lastElementChild;
-  let hadTrailingBarOnLyric = false;
-  if (
-    lastElem &&
-    isLyricsSpan(lastElem) &&
-    lastElem.textContent &&
-    /\|\s*$/.test(lastElem.textContent)
-  ) {
-    hadTrailingBarOnLyric = true;
-    // textContent 代入は male/female を壊すので末尾テキストノードだけ削る
-    stripTrailingBarFromElement(lastElem);
-  }
+  const hadTrailingBarOnLine = consumeTrailingMeasureBar(parentP);
 
   let suffix;
-  if (appendBar || hadTrailingBarOnLyric) {
-    suffix = hadTrailingBarOnLyric
-      ? ` ${overflowText} |`
-      : ` ${overflowText} | `;
+  if (appendBar || hadTrailingBarOnLine) {
+    suffix = ` ${overflowText} | `;
   } else {
     suffix = ` ${overflowText}`;
   }
 
+  const lastElem = parentP.lastElementChild;
   // 末尾が単純な歌詞 span ならそこに追記（| が LYRICS_SPAN 内に残る）
   if (
     lastElem &&
