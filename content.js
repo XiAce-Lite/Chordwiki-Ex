@@ -645,6 +645,20 @@ function isOverflowLyricsText(cleanedText) {
   );
 }
 
+// --- / ---- は譜面内でも普通にある。区切り線は 9 連以上の - とみなす
+const LONG_DASH_SEPARATOR_RE = /-{9,}/;
+
+function isLongDashSeparatorText(cleanedText) {
+  const body = cleanedText.replace(/\|+\s*$/, '').trim();
+  return LONG_DASH_SEPARATOR_RE.test(body);
+}
+
+// [] 由来の実コード（小節線のみの chord は除く）。無ければメモ行とみなす
+function lineHasBracketChord(line) {
+  if (!line) return false;
+  return filterChordSpans(line).some((span) => !isChordLineBarOnly(span));
+}
+
 // 行頭が chord より先の wordtop（|移動オフ時のはみ出し典型）
 function isLineLeadingWordtop(wordtop) {
   const line = wordtop.parentElement;
@@ -660,6 +674,14 @@ function isOverflowWordtopCandidate(wordtop) {
   const cleanedText = cleanText(wordtop.textContent);
   if (!cleanedText || cleanedText === '|') return false;
   if (cleanedText.startsWith('|')) return false;
+  // 区切り線（--------- 等）は前行へ移さない
+  if (isLongDashSeparatorText(cleanedText)) return false;
+
+  const line = wordtop.parentElement;
+  // {} のコメント/キーはそのまま。コード無し行（"<検索用>" や末尾メモ等）もはみ出し扱いにしない
+  if (line?.matches?.('p.line.comment, p.comment, p.key')) return false;
+  if (line?.matches?.(LINE_SELECTOR) && !lineHasBracketChord(line)) return false;
+
   if (isOverflowLyricsText(cleanedText)) return true;
   // コード行に|が残る場合: 行頭歌詞（chord より前）をはみ出しとみなす
   return isLineLeadingWordtop(wordtop) && /[^|]/.test(cleanedText);
