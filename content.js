@@ -204,12 +204,12 @@ function setFirstSpanToWordtop() {
   });
 }
 
-// 全角スペース除去＋trimの共通関数
+// 全角スペース→半角スペース置換＋trimの共通関数
 function cleanText(text) {
-  return text.replace(/　/g, '').trim();
+  return text.replace(/　/g, ' ').trim();
 }
 
-// 全角スペース除去後に空の要素を削除する。
+// 空白のみになった wordtop を削除する。
 function removeEmptyWordtopSpans() {
   const wordtopSpans = document.querySelectorAll('span.wordtop');
 
@@ -743,7 +743,7 @@ function moveOverflowWordtops() {
     if (!parentP) return;
 
     const hadTrailingBar = /\|+\s*$/.test(cleanedText);
-    const overflowText = cleanedText.replace(/\|+\s*$/, '').replace(/　/g, '');
+    const overflowText = cleanedText.replace(/\|+\s*$/, '').trim();
     if (!overflowText) return;
 
     appendOverflowLyricsToLine(parentP, overflowText, { appendBar: hadTrailingBar });
@@ -1245,7 +1245,8 @@ function applyMeasureColumnWidths(parsedLines) {
   });
 }
 
-function stripIdeographicSpacesInLineLyrics(line) {
+// 歌詞内の全角スペースを半角スペースに置換（小節揃えの幅計算用）
+function normalizeIdeographicSpacesInLineLyrics(line) {
   line.querySelectorAll(LYRICS_SPAN_SELECTOR).forEach((span) => {
     const textNodes = [];
     const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
@@ -1253,7 +1254,7 @@ function stripIdeographicSpacesInLineLyrics(line) {
     while ((node = walker.nextNode())) textNodes.push(node);
     textNodes.forEach((tn) => {
       if (tn.nodeValue && tn.nodeValue.includes('　')) {
-        tn.nodeValue = tn.nodeValue.replace(/　/g, '');
+        tn.nodeValue = tn.nodeValue.replace(/　/g, ' ');
       }
     });
   });
@@ -1264,7 +1265,7 @@ function alignMeasureBarsInBlocks() {
   blocks.forEach((lines) => {
     const parsedLines = [];
     lines.forEach((line) => {
-      stripIdeographicSpacesInLineLyrics(line);
+      normalizeIdeographicSpacesInLineLyrics(line);
       const parsed = wrapLineIntoMeasures(line);
       if (parsed && parsed.measures.length > 0) parsedLines.push(parsed);
     });
